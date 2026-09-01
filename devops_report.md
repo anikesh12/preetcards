@@ -1,71 +1,61 @@
-# Integration Report — Birthday Wishes Card App
+# Integration Report — Birthday Wishes Card
 
-## 1. Overall Consistency
+## 1. Consistency Overview
 
-The stack is largely coherent: React/Vite frontend, Express backend, better-sqlite3 for metadata, sharp for image processing, local disk storage under `/uploads`, single-server deployment model. Naming conventions, color/design tokens, and file structure all line up with the stated architecture. A few concerns stood out:
+The project is a coherent monorepo (`/frontend` + `/backend`) and the high-level architecture (Vite React SPA + Express API + SQLite + local disk uploads via sharp) is followed consistently across the files reviewed. Design tokens, routing, and the single-server production deployment model all line up with the stated architecture. However, there are **several duplicated/competing implementations of the same responsibility** that suggest the backend was built in overlapping passes and never fully consolidated:
 
-- **Duplicate/competing DB schema definitions.** The `cards` table is defined in **three places** with different shapes:
-  - `backend/db.js` — `cards(id, name, message, photo_paths TEXT JSON, created_at)`
-  - `backend/server.js` — inline `CREATE TABLE cards(...)` (truncated, but starts with `id, reci...` i.e. `recipient_name`, diverging column name from `db.js`'s `name`)
-  - `backend/routes/cards.js` — `cards(id, recipient_name, message, created_at)` **plus a separate normalized `card_images` table**, with no `photo_paths` column at all.
+- **Card creation + upload handling is implemented three times**, each independently:
+  - `backend/server.js` — inline `generateId()`, its own `multer` instance, own sharp resize logic.
+  - `backend/routes/cards.js` — separate `multer` instance, uses `nanoid` for IDs, own resize logic.
+  - `backend/middleware/upload.js` — a third `multer` config (temp-storage + magic-byte verification pattern).
+  - `backend/utils/imageProcessing.js` and `backend/utils/slug.js` — a fourth/fifth set of "canonical" helpers for the same job.
 
-  This is a real schema conflict: `db.js` stores photos as a JSON blob column on `cards`, while `routes/cards.js` expects a fully separate `card_images` table. Since `better-sqlite3` runs `CREATE TABLE IF NOT EXISTS` from multiple files against the same `cards.db`, whichever module initializes first "wins" the column set, and the other module's queries (e.g. inserting into `photo_paths` vs. `card_images`) will fail at runtime. **These three schema owners need to be collapsed into a single source of truth** (recommend keeping `db.js` as the only schema owner and having `server.js`/`routes/cards.js` just `require('../db')`).
+  It's not verifiable from what's shown whether `server.js` actually mounts `routes/cards.js`, or whether it duplicates that logic inline instead. If both are active, you'll get double route registration or dead code; if only `server.js`'s inline version is wired up, then `routes/cards.js`, `middleware/upload.js`, `utils/slug.js`, and `utils/imageProcessing.js` may be **unused dead files** that look load-bearing but aren't. This needs to be resolved to one code path before shipping.
 
-- **Field name mismatch risk:** `name` (db.js) vs. `recipient_name` (server.js / routes/cards.js) — confirm which is authoritative before any code queries `cards.name`.
+- **ID generation is inconsistent**: `server.js` (custom alphabet `generateId`), `routes/cards.js` (`nanoid`), and `utils/slug.js` (its own crypto-based `generateSlug` with a different, ambiguity-free alphabet) all generate the card's public ID differently. Only one of these should be the source of truth for the `cards.id` primary key / URL slug.
 
-## 2. Missing Wiring
+- **`nanoid` version risk**: `routes/cards.js` uses `const { nanoid } = require('nanoid')`. `nanoid` v4+ is ESM-only and **will throw on `require()`** under CommonJS. Confirm `backend/package.json` pins `nanoid@^3` if this file is actually in the active code path — otherwise card creation will crash at import time.
 
-- **`CardCreatedPage.jsx` is orphaned.** It exists under `frontend/src/pages/` and is fully built (with `ShareLinkBar`), but `main.jsx`'s router only defines `/`, `/card/:cardId`, and `*` (404). There is **no route for a "card created / success" page**. Either:
-  - `CreateCardPage` is expected to navigate straight to `/card/:cardId` after submit (in which case `CardCreatedPage.jsx` is dead code), or
-  - a route like `/card/:cardId/created` (or similar) needs to be added to `main.jsx` and `CreateCardPage`'s post-submit `navigate()` call needs to target it.
+- **Upload path mismatch**: `utils/imageProcessing.js` resolves `UPLOADS_DIR` as `path.join(__dirname, '..', '..', 'uploads')` — two levels up from `backend/utils`, i.e. the **project root's** `uploads/` folder. `server.js` and `routes/cards.js` both use `path.join(__dirname, 'uploads')`, i.e. **`backend/uploads`**. If `imageProcessing.js` is actually used for saving files, images would be written outside the directory that `server.js` serves statically (`backend/uploads`) and would 404 on `/uploads/...`.
 
-  This needs to be confirmed against `CreateCardPage.jsx`'s submit handler (truncated in the provided files) — please verify where `navigate()` points.
+- **Schema has both `id` and `slug` columns** (`backend/db.js`). Every consumer shown only ever generates a single card identifier and it's unclear whether `slug` is populated at insert time or left `NULL`. If any route reads by `slug` while inserts only populate `id` (or vice versa), lookups will fail silently (empty result, likely surfaced as a 404 on the card view page).
 
-- **`backend/routes/cards.js` mounting not shown/confirmed.** `server.js` was truncated before any `app.use('/api/cards', ...)` line. Please confirm the route file is actually required and mounted, and that `frontend/src/api/client.js`'s `API_BASE = '/api'` paths (`POST /api/cards`, presumably `GET /api/cards/:id`) match the router's internal paths exactly (e.g. router defines `router.post('/')` mounted at `/api/cards`, not `/api`).
+- **Frontend API access pattern is duplicated**: `frontend/src/api/client.js` is a well-built abstraction (with `ApiError`, field-level validation errors, etc.) intended for all API calls, but `CardViewPage.jsx` defines its own `API_BASE = '/api/cards'` and appears to fetch directly rather than going through `client.js`. Functionally this can still work, but it bypasses the shared error-handling/field-error logic and is a maintenance smell.
 
-- **Static file serving for uploads not confirmed.** `imageProcessing.js` assumes Express serves `UPLOADS_ROOT` at `/uploads` via `express.static`. This line was not visible in the truncated `server.js` — confirm `app.use('/uploads', express.static(path.join(__dirname, 'uploads')))` exists, otherwise photo URLs returned by the API will 404.
+- **Env config appears unused**: `.env.example` defines `UPLOAD_DIR` and `MAX_FILE_SIZE=5242880` (5MB), but every backend file shown hardcodes `'uploads'` and `8 * 1024 * 1024` (8MB) instead of reading `process.env`. The example env file is misleading — changing it currently has no effect.
 
-- **Frontend build output serving:** `server.js` references `FRONTEND_DIST_DIR` — confirm there's a corresponding `app.use(express.static(FRONTEND_DIST_DIR))` + SPA fallback (`app.get('*', ...)` sending `index.html`) so client-side routes like `/card/:cardId` don't 404 on a hard refresh/direct link in production.
+## 2. Missing / Unverified Wiring
 
-- **Env var name mismatch:** `.env.example` defines `UPLOAD_DIR` and `MAX_FILE_SIZE`, but `server.js` reads `process.env.MAX_PHOTOS`, `process.env.MAX_FILE_SIZE_MB`, and hardcodes `UPLOADS_DIR` relative to `__dirname` rather than reading `UPLOAD_DIR` from env. `middleware/upload.js` and `routes/cards.js` also hardcode their own `MAX_FILE_SIZE` / `MAX_PHOTOS` constants (8MB/6 vs. frontend's 5MB/6 in `CreateCardPage.jsx`) instead of reading from a single config. Align these to one source (ideally env-driven) so client-side validation limits match server-enforced limits.
+- **Cannot confirm `GET /api/cards/:id` exists.** Only the `POST /` handler in `routes/cards.js` was visible. `CardViewPage.jsx` and `CardCreatedPage.jsx` (via `ShareLinkBar`) both depend on being able to fetch a single card by ID — this route must exist and must return `photo_paths` in a shape the frontend gallery components expect (`PhotoGallery` accepts either `{url, thumbnailUrl}` objects or plain string URLs — confirm the API response matches one of these).
+- **Cannot confirm `router` from `routes/cards.js` is actually `app.use()`'d in `server.js`** — the visible portion of `server.js` never shows an `app.use('/api/cards', ...)` line; it only shows inline route-adjacent helpers. Verify this explicitly, since if it's missing, the frontend's `POST /api/cards` call has nothing to hit.
+- **Static file serving for `/uploads`** — verify `server.js` has `app.use('/uploads', express.static(UPLOADS_DIR))` (implied by the vite proxy config, not confirmed in the shown snippet).
+- **SPA fallback route** — verify `server.js` serves `FRONTEND_DIST/index.html` for non-API GET requests in production, otherwise refreshing `/card/:id` directly on the deployed server will 404 instead of letting React Router handle it.
+- **`backend/package.json` and `frontend/package.json`** were not included in this file set — dependency versions (especially `nanoid`, `sharp` prebuilt binaries, `better-sqlite3` native build) can't be verified and are common sources of "works on my machine" failures.
 
 ## 3. Setup & Run Steps
 
-**Prerequisites:** Node.js ≥ 18 (per `package.json` `engines`), npm.
-
 ```bash
-# 1. Clone and enter the repo
+# 1. Clone and install everything (root postinstall triggers backend + frontend installs)
 git clone <repo-url>
 cd birthday-wishes-card
-
-# 2. Install all dependencies (root postinstall also runs this automatically)
 npm install
-# equivalent to: npm run install:all
-#   -> npm install --prefix backend
-#   -> npm install --prefix frontend
+# (or explicitly: npm run install:all)
 
-# 3. Configure backend environment
-cd backend
-cp .env.example .env
-# edit .env as needed:
-#   PORT=3001
-#   BASE_URL=http://localhost:3001
-#   UPLOAD_DIR=uploads
-#   MAX_FILE_SIZE=5242880
-cd ..
+# 2. Configure the backend
+cp backend/.env.example backend/.env
+# edit backend/.env if needed (PORT, BASE_URL, UPLOAD_DIR, MAX_FILE_SIZE)
+# NOTE: confirm these vars are actually read by server.js before relying on them
 
-# 4. Run in development (frontend + backend concurrently)
+# 3. Development (runs backend :3001 + frontend :5173 concurrently, with Vite proxying /api and /uploads to the backend)
 npm run dev
-#   backend on http://localhost:3001 (Express API)
-#   frontend on http://localhost:5173 (Vite dev server, proxies /api and /uploads to :3001)
+# App: http://localhost:5173
 
-# 5. Production build & run (single Node server)
-npm run build          # builds frontend into frontend/dist
-npm start               # starts backend, which should serve frontend/dist + /api + /uploads
-# App available at http://localhost:3001
+# 4. Production build + run (single Node server serves built frontend + API)
+npm run build       # builds frontend -> frontend/dist
+npm start           # starts backend/server.js, which should serve frontend/dist + /api + /uploads
+# App: http://localhost:3001 (or PORT from .env)
 ```
 
-**Before first production run, verify:**
-1. `backend/data/` and `backend/uploads/` (+ `uploads/full`, `uploads/thumbs`, `uploads/tmp`) directories are writable — they're auto-created on boot but confirm host filesystem persistence (ephemeral filesystems on Render/Railway free tiers will lose uploads + SQLite DB on redeploy; consider a persistent volume).
-2. The `cards.db` schema conflict noted in §1 is resolved — otherwise expect runtime `SQLITE_ERROR: no such column` failures on card creation or retrieval.
-3. `CORS_ORIGIN` is set appropriately if frontend and backend are ever split across origins (not needed for the single-server deployment model, but present in `.env` options).
+**Before first run**, verify:
+1. `backend/data/` and `backend/uploads/` are writable (both are auto-created on boot, per `db.js` / `server.js`).
+2. The duplicate route/upload/ID-generation logic (Section 1) is reconciled to a single implementation — as-is, there's real risk of either a crash (`nanoid` require) or silent path mismatches (`imageProcessing.js` uploads dir) depending on which files are actually wired into `server.js`.
