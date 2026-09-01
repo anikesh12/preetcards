@@ -1,194 +1,71 @@
-require('dotenv').config();
-
-const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const cors = require('cors');
+const express = require('express');
 const multer = require('multer');
 const sharp = require('sharp');
-const Database = require('better-sqlite3');
+const db = require('./db');
 
-// ---------------------------------------------------------------------------
-// Environment / paths
-// ---------------------------------------------------------------------------
+const app = express();
 const PORT = process.env.PORT || 3001;
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
-const MAX_PHOTOS = parseInt(process.env.MAX_PHOTOS || '6', 10);
-const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '10', 10);
-const MAX_MESSAGE_LENGTH = 500;
-const MAX_NAME_LENGTH = 100;
 
-const DATA_DIR = path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
-const FRONTEND_DIST_DIR = path.join(__dirname, '..', 'frontend', 'dist');
-const DB_PATH = path.join(DATA_DIR, 'cards.db');
+const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
 
-for (const dir of [DATA_DIR, UPLOADS_DIR]) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+const MAX_PHOTOS = 6;
+const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB per file
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+const IMAGE_MAX_WIDTH = 1600;
+const THUMB_WIDTH = 500;
+
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// ---------------------------------------------------------------------------
-// Database setup
-// ---------------------------------------------------------------------------
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS cards (
-    id TEXT PRIMARY KEY,
-    recipient_name TEXT NOT NULL,
-    message TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS photos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_id TEXT NOT NULL,
-    filename TEXT NOT NULL,
-    thumb_filename TEXT NOT NULL,
-    order_index INTEGER NOT NULL,
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-  );
-`);
-
-const insertCardStmt = db.prepare(
-  'INSERT INTO cards (id, recipient_name, message, created_at) VALUES (?, ?, ?, ?)'
-);
-const insertPhotoStmt = db.prepare(
-  'INSERT INTO photos (card_id, filename, thumb_filename, order_index) VALUES (?, ?, ?, ?)'
-);
-const getCardStmt = db.prepare('SELECT * FROM cards WHERE id = ?');
-const getPhotosStmt = db.prepare(
-  'SELECT * FROM photos WHERE card_id = ? ORDER BY order_index ASC'
-);
-const cardExistsStmt = db.prepare('SELECT 1 FROM cards WHERE id = ?');
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-const ID_ALPHABET =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-
-function generateSlug(length = 8) {
-  const bytes = crypto.randomBytes(length);
-  let slug = '';
-  for (let i = 0; i < length; i++) {
-    slug += ID_ALPHABET[bytes[i] % ID_ALPHABET.length];
-  }
-  return slug;
-}
-
-function generateUniqueCardId() {
-  let id;
-  let attempts = 0;
-  do {
-    id = generateSlug(8);
-    attempts++;
-    if (attempts > 10) {
-      throw new Error('Unable to generate a unique card ID');
-    }
-  } while (cardExistsStmt.get(id));
-  return id;
-}
-
-function toPublicCard(cardRow, photoRows) {
-  return {
-    id: cardRow.id,
-    recipientName: cardRow.recipient_name,
-    message: cardRow.message,
-    createdAt: cardRow.created_at,
-    photos: photoRows.map((p) => ({
-      url: `/uploads/${cardRow.id}/${p.filename}`,
-      thumbUrl: `/uploads/${cardRow.id}/${p.thumb_filename}`,
-    })),
-  };
-}
-
-function asyncHandler(fn) {
-  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-}
-
-// ---------------------------------------------------------------------------
-// Multer (in-memory) config
-// ---------------------------------------------------------------------------
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
+    fileSize: MAX_FILE_SIZE,
     files: MAX_PHOTOS,
-    fileSize: MAX_FILE_SIZE_MB * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
-    if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('UNSUPPORTED_FILE_TYPE'));
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      cb(new Error('INVALID_FILE_TYPE'));
+      return;
     }
+    cb(null, true);
   },
 });
 
-// ---------------------------------------------------------------------------
-// Express app
-// ---------------------------------------------------------------------------
-const app = express();
-app.disable('x-powered-by');
-app.set('trust proxy', 1);
+function generateId(length = 8) {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let id = '';
+  const bytes = crypto.randomBytes(length);
+  for (let i = 0; i < length; i++) {
+    id += alphabet[bytes[i] % alphabet.length];
+  }
+  return id;
+}
 
-app.use(
-  cors({
-    origin: CORS_ORIGIN,
-  })
-);
+function generateUniqueCardId() {
+  const existsStmt = db.prepare('SELECT 1 FROM cards WHERE id = ?');
+  let id = generateId();
+  let attempts = 0;
+  while (existsStmt.get(id) && attempts < 10) {
+    id = generateId();
+    attempts++;
+  }
+  return id;
+}
 
-// Serve processed images
-app.use(
-  '/uploads',
-  express.static(UPLOADS_DIR, {
-    maxAge: '30d',
-    immutable: true,
-  })
-);
+app.use(express.json());
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
 
-app.use(express.json({ limit: '1mb' }));
+// ---- API Routes ----
 
-// ---------------------------------------------------------------------------
-// API routes
-// ---------------------------------------------------------------------------
-const apiRouter = express.Router();
-
-apiRouter.get('/health', (req, res) => {
-  res.json({ status: 'ok', env: NODE_ENV });
-});
-
-apiRouter.post(
-  '/cards',
-  (req, res, next) => {
-    upload.array('photos', MAX_PHOTOS)(req, res, (err) => {
-      if (err) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({
-            error: `Each photo must be smaller than ${MAX_FILE_SIZE_MB}MB.`,
-          });
-        }
-        if (err.code === 'LIMIT_FILE_COUNT') {
-          return res
-            .status(400)
-            .json({ error: `You can upload up to ${MAX_PHOTOS} photos.` });
-        }
-        if (err.message === 'UNSUPPORTED_FILE_TYPE') {
-          return res
-            .status(400)
-            .json({ error: 'Only JPEG, PNG, WEBP, or GIF images are allowed.' });
-        }
-        return next(err);
-      }
-      next();
-    });
-  },
-  asyncHandler(async (req, res) => {
+app.post('/api/cards', upload.array('photos', MAX_PHOTOS), async (req, res) => {
+  try {
     const recipientName = (req.body.recipientName || '').trim();
     const message = (req.body.message || '').trim();
     const files = req.files || [];
@@ -196,14 +73,14 @@ apiRouter.post(
     const errors = {};
     if (!recipientName) {
       errors.recipientName = 'Recipient name is required.';
-    } else if (recipientName.length > MAX_NAME_LENGTH) {
-      errors.recipientName = `Recipient name must be under ${MAX_NAME_LENGTH} characters.`;
+    } else if (recipientName.length > 100) {
+      errors.recipientName = 'Recipient name is too long.';
     }
 
     if (!message) {
-      errors.message = 'Birthday message is required.';
-    } else if (message.length > MAX_MESSAGE_LENGTH) {
-      errors.message = `Message must be under ${MAX_MESSAGE_LENGTH} characters.`;
+      errors.message = 'A birthday message is required.';
+    } else if (message.length > 500) {
+      errors.message = 'Message must be 500 characters or fewer.';
     }
 
     if (files.length > MAX_PHOTOS) {
@@ -211,115 +88,117 @@ apiRouter.post(
     }
 
     if (Object.keys(errors).length > 0) {
-      return res.status(400).json({ error: 'Validation failed', fields: errors });
+      return res.status(400).json({ error: 'VALIDATION_ERROR', fields: errors });
     }
 
     const cardId = generateUniqueCardId();
     const cardDir = path.join(UPLOADS_DIR, cardId);
     fs.mkdirSync(cardDir, { recursive: true });
 
-    const processedPhotos = [];
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const baseName = `photo-${i + 1}-${Date.now()}`;
-        const filename = `${baseName}.webp`;
-        const thumbFilename = `${baseName}-thumb.webp`;
-
-        await sharp(file.buffer)
-          .rotate()
-          .resize({ width: 1600, withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toFile(path.join(cardDir, filename));
-
-        await sharp(file.buffer)
-          .rotate()
-          .resize({ width: 400, height: 400, fit: 'cover' })
-          .webp({ quality: 75 })
-          .toFile(path.join(cardDir, thumbFilename));
-
-        processedPhotos.push({ filename, thumbFilename, orderIndex: i });
-      }
-    } catch (err) {
-      fs.rmSync(cardDir, { recursive: true, force: true });
-      throw err;
-    }
+    const insertCard = db.prepare(
+      `INSERT INTO cards (id, recipient_name, message, created_at) VALUES (?, ?, ?, ?)`
+    );
+    const insertPhoto = db.prepare(
+      `INSERT INTO photos (card_id, filename, thumbnail_filename, position) VALUES (?, ?, ?, ?)`
+    );
 
     const createdAt = new Date().toISOString();
+    insertCard.run(cardId, recipientName, message, createdAt);
 
-    const insertAll = db.transaction(() => {
-      insertCardStmt.run(cardId, recipientName, message, createdAt);
-      for (const p of processedPhotos) {
-        insertPhotoStmt.run(cardId, p.filename, p.thumbFilename, p.orderIndex);
-      }
-    });
-    insertAll();
+    let position = 0;
+    for (const file of files) {
+      const baseName = `${crypto.randomBytes(6).toString('hex')}`;
+      const fullFilename = `${baseName}.webp`;
+      const thumbFilename = `${baseName}-thumb.webp`;
 
-    const cardRow = getCardStmt.get(cardId);
-    const photoRows = getPhotosStmt.all(cardId);
+      await sharp(file.buffer)
+        .rotate()
+        .resize({ width: IMAGE_MAX_WIDTH, withoutEnlargement: true })
+        .webp({ quality: 82 })
+        .toFile(path.join(cardDir, fullFilename));
 
-    res.status(201).json(toPublicCard(cardRow, photoRows));
-  })
-);
+      await sharp(file.buffer)
+        .rotate()
+        .resize({ width: THUMB_WIDTH, withoutEnlargement: true })
+        .webp({ quality: 75 })
+        .toFile(path.join(cardDir, thumbFilename));
 
-apiRouter.get(
-  '/cards/:id',
-  asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const cardRow = getCardStmt.get(id);
-
-    if (!cardRow) {
-      return res.status(404).json({ error: 'Card not found' });
+      insertPhoto.run(cardId, fullFilename, thumbFilename, position);
+      position++;
     }
 
-    const photoRows = getPhotosStmt.all(id);
-    res.json(toPublicCard(cardRow, photoRows));
-  })
-);
+    res.status(201).json({ id: cardId, url: `/card/${cardId}` });
+  } catch (err) {
+    console.error('Error creating card:', err);
+    if (err.message === 'INVALID_FILE_TYPE') {
+      return res.status(400).json({ error: 'INVALID_FILE_TYPE', message: 'Only JPEG, PNG, WEBP, and GIF images are allowed.' });
+    }
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'FILE_TOO_LARGE', message: 'Each photo must be under 8MB.' });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ error: 'TOO_MANY_FILES', message: `You can upload up to ${MAX_PHOTOS} photos.` });
+    }
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Something went wrong creating the card.' });
+  }
+});
 
-app.use('/api', apiRouter);
+app.get('/api/cards/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const card = db.prepare('SELECT id, recipient_name, message, created_at FROM cards WHERE id = ?').get(id);
 
-// ---------------------------------------------------------------------------
-// Serve built frontend (production) — SPA fallback
-// ---------------------------------------------------------------------------
-if (fs.existsSync(FRONTEND_DIST_DIR)) {
-  app.use(express.static(FRONTEND_DIST_DIR, { maxAge: '1d' }));
+    if (!card) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Card not found.' });
+    }
 
-  app.get(/^(?!\/api|\/uploads).*/, (req, res) => {
-    res.sendFile(path.join(FRONTEND_DIST_DIR, 'index.html'));
-  });
-} else {
-  app.get('/', (req, res) => {
+    const photos = db
+      .prepare('SELECT filename, thumbnail_filename FROM photos WHERE card_id = ? ORDER BY position ASC')
+      .all(id)
+      .map((photo) => ({
+        url: `/uploads/${id}/${photo.filename}`,
+        thumbnailUrl: `/uploads/${id}/${photo.thumbnail_filename}`,
+      }));
+
     res.json({
-      message:
-        'Birthday Wishes Card API is running. Frontend build not found — run the frontend build step to serve the SPA from this server.',
+      id: card.id,
+      recipientName: card.recipient_name,
+      message: card.message,
+      createdAt: card.created_at,
+      photos,
     });
+  } catch (err) {
+    console.error('Error fetching card:', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Something went wrong fetching the card.' });
+  }
+});
+
+// ---- Serve frontend (production build) ----
+
+if (fs.existsSync(FRONTEND_DIST)) {
+  app.use(express.static(FRONTEND_DIST));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
   });
 }
 
-// ---------------------------------------------------------------------------
-// 404 handler for unmatched API routes
-// ---------------------------------------------------------------------------
-app.use('/api', (req, res) => {
-  res.status(404).json({ error: 'Not found' });
+// ---- Error handling ----
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'NOT_FOUND', message: 'Resource not found.' });
 });
 
-// ---------------------------------------------------------------------------
-// Error handler
-// ---------------------------------------------------------------------------
-app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
-  console.error(err);
-  const status = err.status || 500;
-  res.status(status).json({
-    error: NODE_ENV === 'production' ? 'Internal server error' : err.message,
-  });
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'SERVER_ERROR', message: 'An unexpected error occurred.' });
 });
 
-// ---------------------------------------------------------------------------
-// Start server
-// ---------------------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`Birthday Wishes Card server listening on port ${PORT} [${NODE_ENV}]`);
+  console.log(`Server listening on port ${PORT}`);
 });
 
 module.exports = app;
