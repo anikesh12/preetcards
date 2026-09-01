@@ -94,3 +94,15 @@ Every file above passed an individual execution check, a QA spec review, and a s
 - **16:02** — DevOps runs a final execution gate across every file; all pass. Integration report written.
 - **16:03** — UAT simulates end-to-end user scenarios against the original brief; **fails** due to (1) conflicting `cards` table schema across `db.js`/`server.js`/`routes/cards.js`, and (2) `CardCreatedPage.jsx` built but not wired into the router. Escalated to CEO for review; project held at this state pending a fix decision.
 - **16:03** — Docs agent produces this handover document to record the build-to-date and the open blocking issues for whoever resumes the work.
+
+## Revision — Two launch-blocking bugs surfaced in UAT and need to be fixe
+
+**Client request:** Two launch-blocking bugs surfaced in UAT and need to be fixed before this can ship: First, the 'cards' table schema is currently defined three inconsistent ways across backend/db.js, backend/server.js, and backend/routes/cards.js -- column naming is mismatched ('name' vs 'recipient_name'), and there's ambiguity between a photo_paths JSON column versus a separate card_images table that isn't used consistently. Please consolidate to a single source of truth for the schema (db.js should own the canonical table definition), and update both server.js and routes/cards.js to reference that exact same schema and column names, so that POST /api/cards and GET /api/cards/:id work correctly end to end without mismatches. Second, the confirmation page frontend/src/pages/CardCreatedPage.jsx (which shows the shareable link via ShareLinkBar) exists but was never wired into the router -- frontend/src/main.jsx only defines routes for '/', '/card/:cardId', and a 404 catch-all. Please add the missing route so that after a user submits the create-card form, they're navigated to this confirmation page and can see/copy their shareable link. Both fixes are required for launch sign-off.
+
+**Changes made:**
+- CR1 Change request: backend/db.js -> backend/db.js [done]
+- CR2 Change request: backend/server.js -> backend/server.js [done]
+- CR3 Change request: backend/routes/cards.js -> backend/routes/cards.js [done]
+- CR4 Change request: backend/utils/imageProcessing.js -> backend/utils/imageProcessing.js [done]
+- CR5 Change request: frontend/src/main.jsx -> frontend/src/main.jsx [done]
+- CR6 Change request: frontend/src/pages/CreateCardPage.jsx -> frontend/src/pages/CreateCardPage.jsx [done]
