@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Not Found</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
+  :root {
+    --coral: #FF6F91;
+    --gold: #FFC75F;
+    --plum: #2E1F3B;
+    --cream: #FFFBF5;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+    background: var(--cream);
+    color: var(--plum);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* subtle decorative background confetti dots */
+  body::before,
+  body::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.15;
+    z-index: 0;
+  }
+
+  body::before {
+    width: 220px;
+    height: 220px;
+    background: var(--coral);
+    top: -60px;
+    left: -60px;
+  }
+
+  body::after {
+    width: 260px;
+    height: 260px;
+    background: var(--gold);
+    bottom: -80px;
+    right: -80px;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .icon-wrap {
+    width: 160px;
+    height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+
+  .icon-wrap svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  h1 {
+    font-size: 1.9rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--plum);
+    line-height: 1.25;
+  }
+
+  .subtext {
+    font-size: 1rem;
+    font-weight: 400;
+    color: rgba(46, 31, 59, 0.7);
+    line-height: 1.6;
+    max-width: 320px;
+  }
+
+  .meta {
+    font-size: 0.78rem;
+    color: rgba(46, 31, 59, 0.45);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .cta-btn {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, var(--coral), #ff8fa8);
+    color: var(--cream);
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 1rem;
+    border: none;
+    border-radius: 999px;
+    padding: 14px 32px;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(255, 111, 145, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    text-decoration: none;
+  }
+
+  .cta-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(255, 111, 145, 0.45);
+  }
+
+  .cta-btn:active {
+    transform: translateY(0);
+  }
+
+  .cta-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  @media (max-width: 480px) {
+    h1 {
+      font-size: 1.6rem;
+    }
+
+    .icon-wrap {
+      width: 130px;
+      height: 130px;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="icon-wrap">
+      <!-- deflated balloon illustration -->
+      <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- string -->
+        <path d="M100 150 Q95 165 105 175 Q115 185 100 195" stroke="#2E1F3B" stroke-width="2" opacity="0.35" fill="none" stroke-linecap="round"/>
+        <!-- deflated balloon body (wrinkled droopy shape) -->
+        <path d="M100 30
+                 C 135 30, 150 62, 142 92
+                 C 138 108, 122 118, 118 132
+                 C 116 140, 122 144, 118 150
+                 C 114 156, 104 150, 100 156
+                 C 96 150, 86 156, 82 150
+                 C 78 144, 84 140, 82 132
+                 C 78 118, 62 108, 58 92
+                 C 50 62, 65 30, 100 30 Z"
+              fill="#FFC75F" opacity="0.4"/>
+        <path d="M100 30
+                 C 135 30, 150 62, 142 92
+                 C 138 108, 122 118, 118 132
+                 C 116 140, 122 144, 118 150
+                 C 114 156, 104 150, 100 156
+                 C 96 150, 86 156, 82 150
+                 C 78 144, 84 140, 82 132
+                 C 78 118, 62 108, 58 92
+                 C 50 62, 65 30, 100 30 Z"
+              stroke="#2E1F3B" stroke-width="2.5" opacity="0.5" fill="none"/>
+        <!-- balloon knot -->
+        <path d="M96 156 L100 165 L104 156" stroke="#2E1F3B" stroke-width="2.5" opacity="0.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- little highlight -->
+        <ellipse cx="80" cy="55" rx="8" ry="14" fill="#FFFBF5" opacity="0.5"/>
+      </svg>
+    </div>
+
+    <h1>Card Not Found</h1>
+    <p class="subtext">Looks like this card floated away. It may have expired, been deleted, or the link isn't quite right.</p>
+    <p class="meta">Error 404</p>
+
+    <a href="#" class="cta-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+      Create a New Card
+    </a>
+  </div>
+
+</body>
+</html>

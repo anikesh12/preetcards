@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Card — BirthdayBox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --coral: #FF6F91;
+    --coral-dark: #E85C7E;
+    --gold: #FFC75F;
+    --plum: #2E1F3B;
+    --cream: #FFFBF5;
+    --error: #E8543A;
+    --border: #EFE3D8;
+    --border-focus: #FF6F91;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--cream);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--plum);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px 80px;
+  }
+
+  .page {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 24px;
+    color: var(--plum);
+  }
+
+  .logo .dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 6px 0 0 var(--coral);
+    margin-right: 6px;
+  }
+
+  .tagline {
+    margin-top: 8px;
+    font-size: 14px;
+    color: #6b5a78;
+    font-weight: 500;
+  }
+
+  /* Form card */
+  .form-card {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 28px 22px 24px;
+    box-shadow: 0 6px 24px rgba(46, 31, 59, 0.06);
+    border: 1px solid var(--border);
+  }
+
+  .field {
+    margin-bottom: 22px;
+  }
+
+  label {
+    display: block;
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--plum);
+    margin-bottom: 8px;
+  }
+
+  label .required {
+    color: var(--coral);
+    margin-left: 2px;
+  }
+
+  input[type="text"],
+  textarea {
+    width: 100%;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    color: var(--plum);
+    background: var(--cream);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  input[type="text"]:focus,
+  textarea:focus {
+    border-color: var(--border-focus);
+    background: #fff;
+  }
+
+  input[type="text"]::placeholder,
+  textarea::placeholder {
+    color: #b3a5bd;
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 110px;
+    line-height: 1.5;
+  }
+
+  .field-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
+  }
+
+  .char-counter {
+    font-size: 12px;
+    color: #9b8ba8;
+    font-weight: 500;
+  }
+
+  .error-msg {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: var(--error);
+    font-weight: 500;
+  }
+
+  .error-msg.hidden {
+    display: none;
+  }
+
+  input.has-error,
+  textarea.has-error {
+    border-color: var(--error);
+    background: #FFF6F4;
+  }
+
+  /* Photo upload */
+  .upload-zone {
+    border: 2px dashed #E8B4C4;
+    border-radius: 14px;
+    background: #FFF7FA;
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+
+  .upload-zone:hover {
+    border-color: var(--coral);
+    background: #FFEFF3;
+  }
+
+  .upload-icon {
+    font-size: 26px;
+    margin-bottom: 6px;
+  }
+
+  .upload-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--plum);
+    margin-bottom: 2px;
+  }
+
+  .upload-hint {
+    font-size: 12px;
+    color: #9b8ba8;
+  }
+
+  .photo-grid {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 4px 2px 8px;
+    margin-top: 14px;
+  }
+
+  .photo-thumb {
+    position: relative;
+    flex: 0 0 auto;
+    width: 76px;
+    height: 76px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #FFD9E2, #FFE8B8);
+    border: 1px solid var(--border);
+  }
+
+  .photo-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .photo-thumb .remove-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(46, 31, 59, 0.75);
+    color: #fff;
+    border: none;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .photo-count {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #9b8ba8;
+    text-align: right;
+  }
+
+  /* CTA */
+  .cta-wrap {
+    margin-top: 6px;
+  }
+
+  .cta-button {
+    width: 100%;
+    background: var(--coral);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 16px;
+    font-family: 'Poppins', system-ui, sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(255, 111, 145, 0.35);
+    transition: background 0.15s ease, transform 0.1s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .cta-button:hover {
+    background: var(--coral-dark);
+  }
+
+  .cta-button:active {
+    transform: translateY(1px);
+  }
+
+  .cta-button:disabled {
+    background: #F0A6B8;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2.5px solid rgba(255,255,255,0.5);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+
+  .cta-button.loading .spinner {
+    display: inline-block;
+  }
+
+  .cta-button.loading .btn-label::after {
+    content: "Creating...";
+  }
+
+  .cta-button.loading .btn-label {
+    font-size: 0;
+  }
+
+  .cta-button.loading .btn-label::after {
+    font-size: 16px;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .footnote {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 12px;
+    color: #b3a5bd;
+  }
+
+  input[type="file"] {
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="header">
+    <div class="logo"><span class="dot"></span>BirthdayBox</div>
+    <div class="tagline">Make someone's birthday special 🎉</div>
+  </div>
+
+  <form class="form-card" onsubmit="return false;">
+
+    <!-- Recipient Name -->
+    <div class="field">
+      <label for="recipientName">Recipient Name<span class="required">*</span></label>
+      <input type="text" id="recipientName" name="recipientName" placeholder="e.g. Priya Sharma" value="">
+      <div class="error-msg hidden">
+        <span>⚠</span> Please enter the recipient's name
+      </div>
+    </div>
+
+    <!-- Birthday Message -->
+    <div class="field">
+      <label for="message">Birthday Message<span class="required">*</span></label>
+      <textarea id="message" name="message" placeholder="Write something warm and wonderful..." maxlength="500"></textarea>
+      <div class="field-footer">
+        <span class="char-counter">0/500</span>
+      </div>
+      <div class="error-msg hidden">
+        <span>⚠</span> Message can't be empty
+      </div>
+    </div>
+
+    <!-- Photo Upload -->
+    <div class="field">
+      <label>Add Photos <span style="font-weight:500; color:#9b8ba8; font-size:12.5px;">(optional, up to 6)</span></label>
+
+      <label class="upload-zone" for="photoInput">
+        <div class="upload-icon">📸</div>
+        <div class="upload-text">Tap or drag photos here</div>
+        <div class="upload-hint">JPG or PNG, up to 10MB each</div>
+      </label>
+      <input type="file" id="photoInput" accept="image/*" multiple>
+
+      <div class="photo-grid">
+        <div class="photo-thumb">
+          <img src="https://images.unsplash.com/photo-1520854221256-17451cc331bf?w=200&h=200&fit=crop" alt="Uploaded photo 1">
+          <button class="remove-btn" type="button" aria-label="Remove photo">✕</button>
+        </div>
+        <div class="photo-thumb">
+          <img src="https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=200&h=200&fit=crop" alt="Uploaded photo 2">
+          <button class="remove-btn" type="button" aria-label="Remove photo">✕</button>
+        </div>
+        <div class="photo-thumb">
+          <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&h=200&fit=crop" alt="Uploaded photo 3">
+          <button class="remove-btn" type="button" aria-label="Remove photo">✕</button>
+        </div>
+      </div>
+
+      <div class="photo-count">3/6 photos added</div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-wrap">
+      <button type="submit" class="cta-button" id="createBtn">
+        <span class="spinner"></span>
+        <span class="btn-label">Create Card 🎂</span>
+      </button>
+    </div>
+
+  </form>
+
+  <div class="footnote">Your card gets a shareable link once created</div>
+
+</div>
+
+</body>
+</html>

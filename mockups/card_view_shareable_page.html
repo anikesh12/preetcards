@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Happy Birthday, Priya! — Card View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --coral: #FF6F91;
+    --gold: #FFC75F;
+    --plum: #2E1F3B;
+    --cream: #FFFBF5;
+    --card-white: #FFFFFF;
+    --shadow-soft: 0 10px 30px rgba(46,31,59,0.12);
+  }
+
+  *{ box-sizing: border-box; }
+
+  body{
+    margin: 0;
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(180deg, #FFFBF5 0%, #FFF3E4 45%, #FFE9EF 100%);
+    color: var(--plum);
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+    padding-bottom: 120px;
+  }
+
+  /* ---------- Decorative background ---------- */
+  .decor{
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 420px;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .decor svg{ position: absolute; opacity: 0.85; }
+
+  /* ---------- Page container ---------- */
+  .page{
+    position: relative;
+    z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px 20px 0;
+  }
+
+  /* ---------- Heading ---------- */
+  .card-heading{
+    text-align: center;
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    font-weight: 800;
+    color: var(--gold);
+    margin: 0 0 8px;
+    line-height: 1.15;
+    text-shadow:
+      2px 2px 0 var(--plum),
+      -1px -1px 0 var(--plum),
+      1px -1px 0 var(--plum),
+      -1px 1px 0 var(--plum),
+      4px 6px 12px rgba(46,31,59,0.25);
+    letter-spacing: 0.5px;
+  }
+
+  .subtext{
+    text-align: center;
+    color: var(--plum);
+    opacity: 0.65;
+    font-size: 0.9rem;
+    margin-bottom: 32px;
+    font-weight: 500;
+  }
+
+  /* ---------- Message panel ---------- */
+  .message-panel{
+    background: var(--card-white);
+    border-radius: 24px;
+    box-shadow: var(--shadow-soft);
+    padding: 32px 28px;
+    max-width: 640px;
+    margin: 0 auto 48px;
+    border: 2px solid rgba(255,199,95,0.35);
+    position: relative;
+  }
+  .message-panel::before{
+    content: "🎉";
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gold);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    box-shadow: 0 6px 14px rgba(255,199,95,0.5);
+  }
+  .message-text{
+    white-space: pre-line;
+    font-size: 1.05rem;
+    line-height: 1.7;
+    color: var(--plum);
+    margin: 12px 0 0;
+    text-align: center;
+    font-weight: 400;
+  }
+  .message-meta{
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--coral);
+    font-weight: 600;
+    margin-top: 18px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ---------- Gallery ---------- */
+  .gallery-title{
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--plum);
+    margin-bottom: 18px;
+  }
+  .gallery-title span{ color: var(--coral); }
+
+  .gallery{
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    max-width: 900px;
+    margin: 0 auto 60px;
+  }
+  @media (min-width: 640px){
+    .gallery{ grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (min-width: 960px){
+    .gallery{ grid-template-columns: repeat(4, 1fr); }
+  }
+
+  .photo{
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    aspect-ratio: 1 / 1;
+    box-shadow: 0 6px 16px rgba(46,31,59,0.15);
+    cursor: pointer;
+    border: 3px solid var(--card-white);
+    transition: transform 0.2s ease;
+  }
+  .photo:hover{ transform: translateY(-3px) rotate(-0.5deg); }
+  .photo img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .photo .zoom-hint{
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(46,31,59,0.55);
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 4px 8px;
+    border-radius: 20px;
+    backdrop-filter: blur(2px);
+  }
+
+  /* ---------- Skeleton (loading state reference) ---------- */
+  .skeleton-block{
+    background: linear-gradient(90deg, #F1E9DC 25%, #FBF2E4 37%, #F1E9DC 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+    border-radius: 18px;
+  }
+  @keyframes shimmer{
+    0%{ background-position: 100% 0; }
+    100%{ background-position: 0 0; }
+  }
+
+  /* ---------- Error state (reference block) ---------- */
+  .error-state{
+    max-width: 420px;
+    margin: 60px auto;
+    text-align: center;
+    background: var(--card-white);
+    border-radius: 24px;
+    padding: 40px 28px;
+    box-shadow: var(--shadow-soft);
+    display: none; /* shown only as design reference below */
+  }
+
+  /* ---------- Footer ---------- */
+  .footer{
+    text-align: center;
+    padding: 24px 20px 8px;
+    font-size: 0.85rem;
+    color: var(--plum);
+    opacity: 0.7;
+  }
+  .footer a{
+    color: var(--coral);
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 1px dashed var(--coral);
+  }
+
+  /* ---------- Floating Share Button (desktop) ---------- */
+  .share-fab{
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    background: linear-gradient(135deg, var(--coral), #FF8FA8);
+    color: #fff;
+    border: none;
+    border-radius: 50px;
+    padding: 16px 26px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 10px 24px rgba(255,111,145,0.45);
+    cursor: pointer;
+    z-index: 10;
+    transition: transform 0.15s ease;
+  }
+  .share-fab:hover{ transform: scale(1.05); }
+  .share-fab svg{ width: 18px; height: 18px; }
+
+  /* ---------- Toast (design reference, shown statically) ---------- */
+  .toast{
+    position: fixed;
+    bottom: 90px;
+    right: 28px;
+    background: var(--plum);
+    color: var(--cream);
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 8px 20px rgba(46,31,59,0.35);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toast::before{ content: "✅"; font-size: 0.9rem; }
+
+  /* ---------- Mobile bottom bar for share ---------- */
+  @media (max-width: 640px){
+    .share-fab{
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      justify-content: center;
+      width: calc(100% - 32px);
+      border-radius: 16px;
+    }
+    .toast{
+      right: 16px;
+      left: 16px;
+      bottom: 84px;
+      justify-content: center;
+    }
+  }
+
+  /* ---------- Lightbox modal (non-functional markup reference) ---------- */
+  .lightbox{
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(46,31,59,0.85);
+    z-index: 20;
+    align-items: center;
+    justify-content: center;
+  }
+  .lightbox img{
+    max-width: 88vw;
+    max-height: 80vh;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+  }
+  .lightbox-close{
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: none;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+  .lightbox-nav{
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: none;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    font-size: 1.4rem;
+    cursor: pointer;
+  }
+  .lightbox-prev{ left: 20px; }
+  .lightbox-next{ right: 20px; }
+
+  /* ---------- Section divider label for mockup organization ---------- */
+  .mockup-label{
+    text-align: center;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--plum);
+    opacity: 0.4;
+    margin: 70px 0 16px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Decorative confetti / balloons -->
+  <div class="decor">
+    <svg width="100%" height="420" viewBox="0 0 1000 420" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="60" cy="50" r="6" fill="#FF6F91" opacity="0.7"/>
+      <circle cx="140" cy="110" r="4" fill="#FFC75F" opacity="0.8"/>
+      <rect x="200" y="30" width="10" height="10" fill="#FF6F91" opacity="0.6" transform="rotate(20 200 30)"/>
+      <circle cx="900" cy="60" r="5" fill="#FFC75F" opacity="0.7"/>
+      <rect x="850" y="120" width="8" height="8" fill="#FF6F91" opacity="0.5" transform="rotate(45 850 120)"/>
+      <circle cx="960" cy="180" r="4" fill="#FF6F91" opacity="0.6"/>
+      <circle cx="40" cy="220" r="5" fill="#FFC75F" opacity="0.6"/>
+      <rect x="500" y="10" width="9" height="9" fill="#FFC75F" opacity="0.5" transform="rotate(10 500 10)"/>
+
+      <!-- balloons -->
+      <ellipse cx="120" cy="70" rx="26" ry="34" fill="#FF6F91" opacity="0.35"/>
+      <line x1="120" y1="104" x2="120" y2="150" stroke="#FF6F91" stroke-width="1.5" opacity="0.35"/>
+      <ellipse cx="880" cy="90" rx="30" ry="38" fill="#FFC75F" opacity="0.35"/>
+      <line x1="880" y1="128" x2="880" y2="180" stroke="#FFC75F" stroke-width="1.5" opacity="0.35"/>
+      <ellipse cx="500" cy="40" rx="20" ry="26" fill="#FF6F91" opacity="0.25"/>
+      <line x1="500" y1="66" x2="500" y2="100" stroke="#FF6F91" stroke-width="1.5" opacity="0.25"/>
+    </svg>
+  </div>
+
+  <div class="page">
+    <h1 class="card-heading">Happy Birthday, Priya!</h1>
+    <p class="subtext">A little card made just for you, with love 💌</p>
+
+    <div class="message-panel">
+      <p class="message-text">Dearest Priya,
+
+Another trip around the sun and you're shining brighter than ever! Thank you for filling every room with laughter and every friendship with warmth.
+
+Wishing you a year full of adventures, good coffee, and endless reasons to smile.
+
+Happy Birthday!
+With love, your favorite people 🎂</p>
+      <p class="message-meta">Sent with love on Sep 1, 2026</p>
+    </div>
+
+    <h2 class="gallery-title">Memories <span>&amp; moments</span></h2>
+    <div class="gallery">
+      <div class="photo">
+        <img src="https://images.unsplash.com/photo-1533294455009-a77b7557d2d1?w=400&h=400&fit=crop" alt="Birthday memory 1">
+        <span class="zoom-hint">🔍 Tap</span>
+      </div>
+      <div class="photo">
+        <img src="https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=400&h=400&fit=crop" alt="Birthday memory 2">
+        <span class="zoom-hint">🔍 Tap</span>
+      </div>
+      <div class="photo">
+        <img src="https://images.unsplash.com/photo-1520854221256-17451cc331bf?w=400&h=400&fit=crop" alt="Birthday memory 3">
+        <span class="zoom-hint">🔍 Tap</span>
+      </div>
+      <div class="photo">
+        <img src="https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=400&h=400&fit=crop" alt="Birthday memory 4">
+        <span class="zoom-hint">🔍 Tap</span>
+      </div>
+      <div class="photo">
+        <img src="https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=400&h=400&fit=crop" alt="Birthday memory 5">
+        <span class="zoom-hint">🔍 Tap</span>
+      </div>
+      <div class="photo">
+        <img src="https://images.unsplash.com/photo-1470299568150-af9df8ee2b04?w=400&h=400&fit=crop" alt="Birthday memory 6">
+        <span class="zoom-hint">🔍 Tap</span>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Loading state — skeleton reference (for design review only) -->
+    <!-- ============================================= -->
+    <p class="mockup-label">Loading state — reference</p>
+    <div class="message-panel" style="padding:32px 28px;">
+      <div class="skeleton-block" style="height:16px; width:60%; margin:0 auto 10px;"></div>
+      <div class="skeleton-block" style="height:14px; width:85%; margin:0 auto 8px;"></div>
+      <div class="skeleton-block" style="height:14px; width:70%; margin:0 auto 8px;"></div>
+      <div class="skeleton-block" style="height:14px; width:50%; margin:0 auto;"></div>
+    </div>
+    <div class="gallery" style="margin-bottom: 40px;">
+      <div class="skeleton-block photo" style="border:none;"></div>
+      <div class="skeleton-block photo" style="border:none;"></div>
+      <div class="skeleton-block photo" style="border:none;"></div>
+      <div class="skeleton-block photo" style="border:none;"></div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- Error state — reference (for design review only) -->
+    <!-- ============================================= -->
+    <p class="mockup-label">Error state — reference</p>
+    <div class="error-state" style="display:block;">
+      <div style="font-size:2.4rem; margin-bottom:10px;">😕🎈</div>
+      <h3 style="margin:0 0 8px; color:var(--plum); font-size:1.2rem;">Card not found</h3>
+      <p style="color:var(--plum); opacity:0.65; font-size:0.9rem; margin:0 0 20px;">
+        This card may have expired or the link is incorrect.
+      </p>
+      <button style="background:var(--coral); color:#fff; border:none; padding:12px 24px; border-radius:14px; font-family:inherit; font-weight:700; cursor:pointer;">
+        Create a new card
+      </button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Made with 🎉 by BirthdayCards &nbsp;·&nbsp; <a href="#">Create your own card</a>
+  </div>
+
+  <!-- Floating share button -->
+  <button class="share-fab">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="18" cy="5" r="3"></circle>
+      <circle cx="6" cy="12" r="3"></circle>
+      <circle cx="18" cy="19" r="3"></circle>
+      <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"></line>
+      <line x1="15.4" y1="6.5" x2="8.6" y2="10.5"></line>
+    </svg>
+    Share this card
+  </button>
+
+  <!-- Toast reference -->
+  <div class="toast">Link copied!</div>
+
+  <!-- Lightbox modal markup (non-functional, hidden by default) -->
+  <div class="lightbox">
+    <button class="lightbox-close">✕</button>
+    <button class="lightbox-nav lightbox-prev">‹</button>
+    <img src="https://images.unsplash.com/photo-1533294455009-a77b7557d2d1?w=800&h=800&fit=crop" alt="Enlarged memory">
+    <button class="lightbox-nav lightbox-next">›</button>
+  </div>
+
+</body>
+</html>
