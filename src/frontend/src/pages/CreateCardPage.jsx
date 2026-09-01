@@ -1,11 +1,10 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const MAX_PHOTOS = 6;
-const MAX_FILE_SIZE_MB = 5;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_MESSAGE_LENGTH = 500;
+const MAX_FILE_SIZE_MB = 8;
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 export default function CreateCardPage() {
   const navigate = useNavigate();
@@ -13,137 +12,124 @@ export default function CreateCardPage() {
 
   const [recipientName, setRecipientName] = useState('');
   const [message, setMessage] = useState('');
-  const [photos, setPhotos] = useState([]); // { file, previewUrl, id }
+  const [photos, setPhotos] = useState([]); // { file, previewUrl }
   const [errors, setErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
-  const validateField = (field, value, currentPhotos) => {
-    const fieldErrors = {};
-
-    if (field === 'recipientName' || field === 'all') {
-      if (!value?.recipientName?.trim() && field === 'all') {
-        fieldErrors.recipientName = 'Recipient name is required';
-      } else if (field === 'recipientName' && !value.trim()) {
-        fieldErrors.recipientName = 'Recipient name is required';
-      }
-    }
-
-    return fieldErrors;
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
+  const validate = useCallback(() => {
+    const nextErrors = {};
 
     if (!recipientName.trim()) {
-      newErrors.recipientName = 'Recipient name is required';
-    } else if (recipientName.trim().length > 100) {
-      newErrors.recipientName = 'Name is too long (max 100 characters)';
+      nextErrors.recipientName = 'Recipient name is required.';
     }
 
     if (!message.trim()) {
-      newErrors.message = 'A birthday message is required';
+      nextErrors.message = 'Birthday message is required.';
     } else if (message.length > MAX_MESSAGE_LENGTH) {
-      newErrors.message = `Message is too long (max ${MAX_MESSAGE_LENGTH} characters)`;
+      nextErrors.message = `Message must be ${MAX_MESSAGE_LENGTH} characters or fewer.`;
     }
 
     if (photos.length > MAX_PHOTOS) {
-      newErrors.photos = `You can upload up to ${MAX_PHOTOS} photos`;
+      nextErrors.photos = `You can upload up to ${MAX_PHOTOS} photos.`;
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }, [recipientName, message, photos]);
 
-  const addFiles = useCallback((fileList) => {
-    const incoming = Array.from(fileList);
-    if (incoming.length === 0) return;
+  const addFiles = useCallback(
+    (fileList) => {
+      const incoming = Array.from(fileList);
+      let rejectionMessage = '';
 
-    setErrors((prev) => ({ ...prev, photos: undefined }));
-
-    setPhotos((prevPhotos) => {
-      let updated = [...prevPhotos];
-      let photoError = '';
-
-      for (const file of incoming) {
-        if (updated.length >= MAX_PHOTOS) {
-          photoError = `You can upload up to ${MAX_PHOTOS} photos`;
-          break;
+      const validFiles = incoming.filter((file) => {
+        if (!ACCEPTED_TYPES.includes(file.type)) {
+          rejectionMessage = 'Only JPG, PNG, WEBP, or GIF images are supported.';
+          return false;
         }
-        if (!ALLOWED_TYPES.includes(file.type)) {
-          photoError = `"${file.name}" is not a supported image type`;
-          continue;
+        if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+          rejectionMessage = `Each photo must be under ${MAX_FILE_SIZE_MB}MB.`;
+          return false;
         }
-        if (file.size > MAX_FILE_SIZE_BYTES) {
-          photoError = `"${file.name}" exceeds the ${MAX_FILE_SIZE_MB}MB size limit`;
-          continue;
-        }
+        return true;
+      });
 
-        updated.push({
+      setPhotos((prev) => {
+        const combined = [...prev, ...validFiles.map((file) => ({
           file,
           previewUrl: URL.createObjectURL(file),
-          id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
-        });
+        }))];
+
+        if (combined.length > MAX_PHOTOS) {
+          rejectionMessage = `You can upload up to ${MAX_PHOTOS} photos.`;
+          return combined.slice(0, MAX_PHOTOS);
+        }
+        return combined;
+      });
+
+      if (rejectionMessage) {
+        setErrors((prev) => ({ ...prev, photos: rejectionMessage }));
+      } else {
+        setErrors((prev) => ({ ...prev, photos: undefined }));
       }
+    },
+    []
+  );
 
-      if (photoError) {
-        setErrors((prev) => ({ ...prev, photos: photoError }));
-      }
-
-      return updated;
-    });
-  }, []);
-
-  const handleFileInputChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      addFiles(e.target.files);
+  const handleFileInputChange = (event) => {
+    if (event.target.files && event.target.files.length) {
+      addFiles(event.target.files);
     }
-    e.target.value = '';
+    event.target.value = '';
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
+  const handleDrop = (event) => {
+    event.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      addFiles(e.dataTransfer.files);
+    if (event.dataTransfer.files && event.dataTransfer.files.length) {
+      addFiles(event.dataTransfer.files);
     }
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
+  const handleDragOver = (event) => {
+    event.preventDefault();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e) => {
-    e.preventDefault();
+  const handleDragLeave = (event) => {
+    event.preventDefault();
     setIsDragging(false);
   };
 
-  const removePhoto = (id) => {
+  const removePhoto = (index) => {
     setPhotos((prev) => {
-      const target = prev.find((p) => p.id === id);
-      if (target) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter((p) => p.id !== id);
+      const next = [...prev];
+      const [removed] = next.splice(index, 1);
+      if (removed) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+      return next;
     });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setSubmitError('');
 
-    if (!validateForm()) {
+    if (!validate()) {
       return;
     }
 
-    setSubmitting(true);
+    setIsSubmitting(true);
 
     try {
       const formData = new FormData();
       formData.append('recipientName', recipientName.trim());
       formData.append('message', message.trim());
-      photos.forEach((p) => {
-        formData.append('photos', p.file);
+      photos.forEach(({ file }) => {
+        formData.append('photos', file);
       });
 
       const response = await fetch('/api/cards', {
@@ -152,425 +138,146 @@ export default function CreateCardPage() {
       });
 
       if (!response.ok) {
-        let errMsg = 'Something went wrong creating your card. Please try again.';
-        try {
-          const data = await response.json();
-          if (data?.error) errMsg = data.error;
-        } catch {
-          // ignore parse errors
-        }
-        throw new Error(errMsg);
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.message || 'Something went wrong creating your card.');
       }
 
       const data = await response.json();
-      const cardId = data.id || data.cardId || data.slug;
+      const cardId = data.id || data.cardId;
+      const shareUrl = data.shareUrl || data.share_link || (cardId ? `${window.location.origin}/card/${cardId}` : '');
 
       if (!cardId) {
-        throw new Error('Card was created but no ID was returned.');
+        throw new Error('Card was created but no id was returned.');
       }
 
-      navigate(`/card/${cardId}`);
-    } catch (err) {
-      setSubmitError(err.message || 'Something went wrong. Please try again.');
-      setSubmitting(false);
+      navigate(`/confirmation/${cardId}`, {
+        state: { cardId, shareUrl },
+      });
+    } catch (error) {
+      setSubmitError(error.message || 'Something went wrong. Please try again.');
+      setIsSubmitting(false);
     }
   };
 
-  const messageCount = message.length;
+  const remainingChars = MAX_MESSAGE_LENGTH - message.length;
 
   return (
-    <div style={styles.page}>
-      <style>{`
-        .cc-photo-drop:hover {
-          border-color: #FF6F91;
-          background-color: #FFF3F6;
-        }
-        .cc-submit-btn:hover:not(:disabled) {
-          background-color: #FF5C82;
-        }
-        .cc-remove-btn:hover {
-          background-color: #2E1F3B;
-        }
-        .cc-input:focus, .cc-textarea:focus {
-          outline: none;
-          border-color: #FF6F91;
-          box-shadow: 0 0 0 3px rgba(255, 111, 145, 0.15);
-        }
-        @keyframes cc-spin {
-          to { transform: rotate(360deg); }
-        }
-        .cc-spinner {
-          animation: cc-spin 0.7s linear infinite;
-        }
-      `}</style>
+    <div className="create-card-page">
+      <header className="create-card-header">
+        <h1 className="app-logo">🎉 Birthday Wishes</h1>
+        <p className="app-tagline">Make someone's birthday special</p>
+      </header>
 
-      <div style={styles.container}>
-        <header style={styles.header}>
-          <div style={styles.logoRow}>
-            <span style={styles.logoEmoji} aria-hidden="true">🎂</span>
-            <h1 style={styles.logoText}>Birthday Wishes</h1>
+      <form className="create-card-form" onSubmit={handleSubmit} noValidate>
+        <div className="form-field">
+          <label htmlFor="recipientName">Recipient Name</label>
+          <input
+            id="recipientName"
+            name="recipientName"
+            type="text"
+            value={recipientName}
+            onChange={(e) => setRecipientName(e.target.value)}
+            placeholder="e.g. Priya"
+            required
+            aria-invalid={Boolean(errors.recipientName)}
+            aria-describedby={errors.recipientName ? 'recipientName-error' : undefined}
+          />
+          {errors.recipientName && (
+            <p className="field-error" id="recipientName-error">
+              {errors.recipientName}
+            </p>
+          )}
+        </div>
+
+        <div className="form-field">
+          <label htmlFor="message">Birthday Message</label>
+          <textarea
+            id="message"
+            name="message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value.slice(0, MAX_MESSAGE_LENGTH))}
+            placeholder="Write a heartfelt birthday message..."
+            rows={6}
+            required
+            aria-invalid={Boolean(errors.message)}
+            aria-describedby={errors.message ? 'message-error' : 'message-counter'}
+          />
+          <div className="char-counter" id="message-counter">
+            {message.length}/{MAX_MESSAGE_LENGTH}
           </div>
-          <p style={styles.tagline}>Make someone's birthday special</p>
-        </header>
+          {errors.message && (
+            <p className="field-error" id="message-error">
+              {errors.message}
+            </p>
+          )}
+        </div>
 
-        <form onSubmit={handleSubmit} noValidate style={styles.form}>
-          <div style={styles.field}>
-            <label htmlFor="recipientName" style={styles.label}>
-              Recipient Name <span style={styles.required}>*</span>
-            </label>
+        <div className="form-field">
+          <label htmlFor="photos">Photos</label>
+          <div
+            className={`photo-dropzone${isDragging ? ' photo-dropzone--dragging' : ''}`}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                fileInputRef.current?.click();
+              }
+            }}
+          >
+            <p>Tap or drag photos here</p>
+            <p className="photo-hint">
+              Up to {MAX_PHOTOS} photos, {MAX_FILE_SIZE_MB}MB each (JPG, PNG, WEBP, GIF)
+            </p>
             <input
-              id="recipientName"
-              type="text"
-              className="cc-input"
-              style={{
-                ...styles.input,
-                ...(errors.recipientName ? styles.inputError : {}),
-              }}
-              value={recipientName}
-              onChange={(e) => {
-                setRecipientName(e.target.value);
-                if (errors.recipientName) {
-                  setErrors((prev) => ({ ...prev, recipientName: undefined }));
-                }
-              }}
-              placeholder="e.g. Priya"
-              maxLength={100}
-              disabled={submitting}
+              ref={fileInputRef}
+              id="photos"
+              name="photos"
+              type="file"
+              accept={ACCEPTED_TYPES.join(',')}
+              multiple
+              onChange={handleFileInputChange}
+              hidden
             />
-            {errors.recipientName && (
-              <p style={styles.errorText}>{errors.recipientName}</p>
-            )}
           </div>
 
-          <div style={styles.field}>
-            <div style={styles.labelRow}>
-              <label htmlFor="message" style={styles.label}>
-                Birthday Message <span style={styles.required}>*</span>
-              </label>
-              <span
-                style={{
-                  ...styles.charCounter,
-                  ...(messageCount > MAX_MESSAGE_LENGTH ? styles.charCounterOver : {}),
-                }}
-              >
-                {messageCount}/{MAX_MESSAGE_LENGTH}
-              </span>
-            </div>
-            <textarea
-              id="message"
-              className="cc-textarea"
-              style={{
-                ...styles.textarea,
-                ...(errors.message ? styles.inputError : {}),
-              }}
-              value={message}
-              onChange={(e) => {
-                setMessage(e.target.value);
-                if (errors.message) {
-                  setErrors((prev) => ({ ...prev, message: undefined }));
-                }
-              }}
-              placeholder="Write a warm birthday message..."
-              rows={6}
-              disabled={submitting}
-            />
-            {errors.message && <p style={styles.errorText}>{errors.message}</p>}
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>
-              Photos{' '}
-              <span style={styles.hint}>
-                (up to {MAX_PHOTOS}, max {MAX_FILE_SIZE_MB}MB each — JPG, PNG, WEBP, GIF)
-              </span>
-            </label>
-
-            <div
-              className="cc-photo-drop"
-              style={{
-                ...styles.dropZone,
-                ...(isDragging ? styles.dropZoneActive : {}),
-              }}
-              onClick={() => !submitting && fileInputRef.current?.click()}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              role="button"
-              tabIndex={0}
-              aria-label="Upload photos"
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ALLOWED_TYPES.join(',')}
-                multiple
-                onChange={handleFileInputChange}
-                style={{ display: 'none' }}
-                disabled={submitting}
-              />
-              <span style={styles.dropZoneIcon} aria-hidden="true">📷</span>
-              <p style={styles.dropZoneText}>
-                Tap or drag photos here ({photos.length}/{MAX_PHOTOS})
-              </p>
-            </div>
-
-            {errors.photos && <p style={styles.errorText}>{errors.photos}</p>}
-
-            {photos.length > 0 && (
-              <div style={styles.thumbGrid}>
-                {photos.map((p) => (
-                  <div key={p.id} style={styles.thumbWrapper}>
-                    <img src={p.previewUrl} alt="" style={styles.thumbImg} />
-                    <button
-                      type="button"
-                      className="cc-remove-btn"
-                      style={styles.removeBtn}
-                      onClick={() => removePhoto(p.id)}
-                      disabled={submitting}
-                      aria-label="Remove photo"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {submitError && (
-            <div style={styles.submitErrorBox} role="alert">
-              {submitError}
+          {photos.length > 0 && (
+            <div className="photo-preview-grid">
+              {photos.map((photo, index) => (
+                <div className="photo-preview-item" key={photo.previewUrl}>
+                  <img src={photo.previewUrl} alt={`Upload preview ${index + 1}`} />
+                  <button
+                    type="button"
+                    className="photo-remove-btn"
+                    onClick={() => removePhoto(index)}
+                    aria-label={`Remove photo ${index + 1}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
-          <button
-            type="submit"
-            className="cc-submit-btn"
-            style={{
-              ...styles.submitBtn,
-              ...(submitting ? styles.submitBtnDisabled : {}),
-            }}
-            disabled={submitting}
-          >
-            {submitting ? (
-              <>
-                <span className="cc-spinner" style={styles.spinner} aria-hidden="true" />
-                Creating...
-              </>
-            ) : (
-              'Create Card'
-            )}
-          </button>
-        </form>
-      </div>
+          {errors.photos && <p className="field-error">{errors.photos}</p>}
+        </div>
+
+        {submitError && <p className="submit-error">{submitError}</p>}
+
+        <button type="submit" className="submit-btn" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              Creating...
+            </>
+          ) : (
+            'Create Card'
+          )}
+        </button>
+      </form>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: '100vh',
-    backgroundColor: '#FFFBF5',
-    fontFamily:
-      "'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif",
-    padding: '24px 16px 48px',
-    boxSizing: 'border-box',
-  },
-  container: {
-    maxWidth: '480px',
-    margin: '0 auto',
-  },
-  header: {
-    textAlign: 'center',
-    marginBottom: '28px',
-  },
-  logoRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-  },
-  logoEmoji: {
-    fontSize: '28px',
-  },
-  logoText: {
-    fontSize: '24px',
-    fontWeight: 700,
-    color: '#2E1F3B',
-    margin: 0,
-  },
-  tagline: {
-    fontSize: '14px',
-    color: '#6B5B73',
-    marginTop: '6px',
-    marginBottom: 0,
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '20px',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  labelRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  label: {
-    fontSize: '14px',
-    fontWeight: 600,
-    color: '#2E1F3B',
-    marginBottom: '6px',
-  },
-  hint: {
-    fontWeight: 400,
-    color: '#8A7A91',
-    fontSize: '12px',
-  },
-  required: {
-    color: '#FF6F91',
-  },
-  charCounter: {
-    fontSize: '12px',
-    color: '#8A7A91',
-  },
-  charCounterOver: {
-    color: '#E24E5A',
-    fontWeight: 600,
-  },
-  input: {
-    fontSize: '16px',
-    padding: '12px 14px',
-    borderRadius: '12px',
-    border: '2px solid #EEE0E4',
-    backgroundColor: '#FFFFFF',
-    color: '#2E1F3B',
-    fontFamily: 'inherit',
-    boxSizing: 'border-box',
-    transition: 'border-color 0.15s, box-shadow 0.15s',
-  },
-  textarea: {
-    fontSize: '16px',
-    padding: '12px 14px',
-    borderRadius: '12px',
-    border: '2px solid #EEE0E4',
-    backgroundColor: '#FFFFFF',
-    color: '#2E1F3B',
-    fontFamily: 'inherit',
-    resize: 'vertical',
-    minHeight: '120px',
-    boxSizing: 'border-box',
-    transition: 'border-color 0.15s, box-shadow 0.15s',
-  },
-  inputError: {
-    borderColor: '#E24E5A',
-  },
-  errorText: {
-    color: '#E24E5A',
-    fontSize: '13px',
-    marginTop: '6px',
-    marginBottom: 0,
-  },
-  dropZone: {
-    border: '2px dashed #E8D5DB',
-    borderRadius: '16px',
-    padding: '24px 16px',
-    textAlign: 'center',
-    cursor: 'pointer',
-    backgroundColor: '#FFF9F5',
-    transition: 'border-color 0.15s, background-color 0.15s',
-  },
-  dropZoneActive: {
-    borderColor: '#FF6F91',
-    backgroundColor: '#FFF3F6',
-  },
-  dropZoneIcon: {
-    fontSize: '28px',
-    display: 'block',
-    marginBottom: '6px',
-  },
-  dropZoneText: {
-    fontSize: '13px',
-    color: '#6B5B73',
-    margin: 0,
-  },
-  thumbGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '10px',
-    marginTop: '12px',
-  },
-  thumbWrapper: {
-    position: 'relative',
-    width: '100%',
-    paddingBottom: '100%',
-    borderRadius: '12px',
-    overflow: 'hidden',
-    backgroundColor: '#F1E6EA',
-  },
-  thumbImg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
-  removeBtn: {
-    position: 'absolute',
-    top: '4px',
-    right: '4px',
-    width: '22px',
-    height: '22px',
-    borderRadius: '50%',
-    border: 'none',
-    backgroundColor: 'rgba(46, 31, 59, 0.75)',
-    color: '#FFFFFF',
-    fontSize: '15px',
-    lineHeight: 1,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'background-color 0.15s',
-  },
-  submitErrorBox: {
-    backgroundColor: '#FDECEA',
-    color: '#B3261E',
-    padding: '12px 14px',
-    borderRadius: '10px',
-    fontSize: '14px',
-  },
-  submitBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '10px',
-    backgroundColor: '#FF6F91',
-    color: '#FFFFFF',
-    fontSize: '16px',
-    fontWeight: 700,
-    padding: '14px 20px',
-    borderRadius: '14px',
-    border: 'none',
-    cursor: 'pointer',
-    width: '100%',
-    boxSizing: 'border-box',
-    transition: 'background-color 0.15s',
-  },
-  submitBtnDisabled: {
-    backgroundColor: '#FFB3C4',
-    cursor: 'not-allowed',
-  },
-  spinner: {
-    width: '16px',
-    height: '16px',
-    border: '2px solid rgba(255,255,255,0.5)',
-    borderTopColor: '#FFFFFF',
-    borderRadius: '50%',
-    display: 'inline-block',
-  },
-};
