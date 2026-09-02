@@ -127,7 +127,7 @@ function Lightbox({ photos, index, onClose, onPrev, onNext }) {
 }
 
 export default function CardViewPage() {
-  const { id } = useParams();
+  const { cardId: id } = useParams();
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

@@ -150,8 +150,8 @@ export default function CreateCardPage() {
         throw new Error('Card was created but no id was returned.');
       }
 
-      navigate(`/confirmation/${cardId}`, {
-        state: { cardId, shareUrl },
+      navigate(`/card/${cardId}/created`, {
+        state: { cardId, shareUrl, recipientName: recipientName.trim() },
       });
     } catch (error) {
       setSubmitError(error.message || 'Something went wrong. Please try again.');
