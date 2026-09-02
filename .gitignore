@@ -1,5 +1,5 @@
 node_modules/
 dist/
-backend/data/
-backend/uploads/
+src/backend/data/
+src/backend/uploads/
 .env
