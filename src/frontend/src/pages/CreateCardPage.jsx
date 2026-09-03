@@ -163,6 +163,243 @@ export default function CreateCardPage() {
 
   return (
     <div className="create-card-page">
+      <style>{`
+        .create-card-page {
+          min-height: 100vh;
+          background: linear-gradient(180deg, #FFFBF5 0%, #FFF3E2 100%);
+          font-family: system-ui, -apple-system, sans-serif;
+          color: #2E1F3B;
+          padding: 40px 20px 64px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .create-card-header {
+          text-align: center;
+          margin-bottom: 28px;
+        }
+
+        .app-logo {
+          font-family: 'Poppins', system-ui, sans-serif;
+          font-weight: 700;
+          font-size: clamp(1.6rem, 6vw, 2.2rem);
+          color: #FFC75F;
+          text-shadow: 1.5px 1.5px 0 #2E1F3B, -1px -1px 0 #2E1F3B, 1px -1px 0 #2E1F3B, -1px 1px 0 #2E1F3B;
+          margin: 0 0 6px;
+        }
+
+        .app-tagline {
+          color: #5A4770;
+          font-size: 1rem;
+          margin: 0;
+        }
+
+        .create-card-form {
+          width: 100%;
+          max-width: 480px;
+          background: #FFFDF9;
+          border: 1px solid rgba(255, 111, 145, 0.15);
+          border-radius: 24px;
+          box-shadow: 0 10px 30px rgba(46, 31, 59, 0.10);
+          padding: 32px 28px;
+          display: flex;
+          flex-direction: column;
+          gap: 22px;
+        }
+
+        .form-field {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .form-field label {
+          font-weight: 600;
+          font-size: 0.9rem;
+          color: #2E1F3B;
+        }
+
+        .form-field input[type="text"],
+        .form-field textarea {
+          width: 100%;
+          box-sizing: border-box;
+          padding: 12px 16px;
+          border-radius: 12px;
+          border: 2px solid #FFF3E2;
+          background: #FFFBF5;
+          font-size: 1rem;
+          font-family: inherit;
+          color: #2E1F3B;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .form-field input[type="text"]::placeholder,
+        .form-field textarea::placeholder {
+          color: #B3A6C2;
+        }
+
+        .form-field input[type="text"]:focus,
+        .form-field textarea:focus {
+          outline: none;
+          border-color: #FF6F91;
+          background: #ffffff;
+        }
+
+        .form-field textarea {
+          resize: vertical;
+          min-height: 120px;
+          line-height: 1.6;
+        }
+
+        .char-counter {
+          align-self: flex-end;
+          font-size: 0.78rem;
+          color: #B3A6C2;
+          margin-top: -2px;
+        }
+
+        .field-error {
+          color: #E8503A;
+          font-size: 0.82rem;
+          font-weight: 500;
+          margin: 0;
+        }
+
+        .photo-dropzone {
+          border: 2px dashed #FFC75F;
+          border-radius: 16px;
+          background: #FFF9EC;
+          padding: 28px 16px;
+          text-align: center;
+          cursor: pointer;
+          transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+        }
+
+        .photo-dropzone p {
+          margin: 0 0 4px;
+          font-weight: 600;
+          color: #2E1F3B;
+        }
+
+        .photo-dropzone:hover {
+          background: #FFF3D9;
+          border-color: #FF6F91;
+        }
+
+        .photo-dropzone:active {
+          transform: scale(0.99);
+        }
+
+        .photo-dropzone--dragging {
+          background: #FFEEF1;
+          border-color: #FF6F91;
+        }
+
+        .photo-hint {
+          font-size: 0.8rem;
+          color: #5A4770;
+          font-weight: 400 !important;
+        }
+
+        .photo-preview-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+          margin-top: 12px;
+        }
+
+        .photo-preview-item {
+          position: relative;
+          aspect-ratio: 1 / 1;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 4px 10px rgba(46, 31, 59, 0.15);
+          border: 2px solid #ffffff;
+        }
+
+        .photo-preview-item img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .photo-remove-btn {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          border: none;
+          background: rgba(46, 31, 59, 0.75);
+          color: #fff;
+          font-size: 0.9rem;
+          line-height: 1;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .submit-error {
+          background: #FFF0EC;
+          border: 1px solid rgba(232, 80, 58, 0.3);
+          color: #E8503A;
+          padding: 12px 16px;
+          border-radius: 12px;
+          font-size: 0.9rem;
+          margin: 0;
+        }
+
+        .submit-btn {
+          width: 100%;
+          border: none;
+          border-radius: 999px;
+          background: #FF6F91;
+          color: #FFFBF5;
+          font-weight: 700;
+          font-size: 1.05rem;
+          font-family: 'Poppins', system-ui, sans-serif;
+          padding: 15px 20px;
+          cursor: pointer;
+          box-shadow: 0 8px 20px rgba(255, 111, 145, 0.4);
+          transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 24px rgba(255, 111, 145, 0.5);
+        }
+
+        .submit-btn:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .spinner {
+          width: 16px;
+          height: 16px;
+          border: 2.5px solid rgba(255, 255, 255, 0.5);
+          border-top-color: #ffffff;
+          border-radius: 50%;
+          animation: create-card-spin 0.7s linear infinite;
+        }
+
+        @keyframes create-card-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
       <header className="create-card-header">
         <h1 className="app-logo">🎉 Birthday Wishes</h1>
         <p className="app-tagline">Make someone's birthday special</p>
