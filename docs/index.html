@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Birthday Wishes Card — Prototype Walkthrough</title>
+<style>
+  :root {
+    --coral: #FF6F91;
+    --gold: #FFC75F;
+    --plum: #2E1F3B;
+    --plum-soft: #5A4770;
+    --cream: #FFFBF5;
+    --cream-dark: #FFF3E2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, var(--cream) 0%, var(--cream-dark) 100%);
+    color: var(--plum);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+  header { text-align: center; margin-bottom: 48px; }
+  header .emoji { font-size: 48px; }
+  h1 {
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    margin: 8px 0 4px;
+    color: var(--gold);
+    text-shadow: 1.5px 1.5px 0 var(--plum), -1px -1px 0 var(--plum), 1px -1px 0 var(--plum), -1px 1px 0 var(--plum);
+  }
+  header p { color: var(--plum-soft); font-size: 1.05rem; margin: 0; }
+  h2 {
+    font-size: 1.4rem;
+    margin: 56px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--coral);
+    color: white;
+    font-weight: 700;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .card {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(46, 31, 59, 0.10);
+    padding: 28px;
+    margin-top: 16px;
+  }
+  .card p { margin: 0 0 16px; color: var(--plum-soft); }
+  .card p:last-child { margin-bottom: 0; }
+  .shots { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 20px; }
+  .shot { text-align: center; }
+  .shot img {
+    max-width: 260px;
+    width: 100%;
+    border-radius: 16px;
+    border: 1px solid rgba(46, 31, 59, 0.08);
+    box-shadow: 0 6px 20px rgba(46, 31, 59, 0.15);
+  }
+  .shot.desktop img { max-width: 420px; }
+  .shot .caption { font-size: 0.85rem; color: var(--plum-soft); margin-top: 10px; }
+  .intro-list { list-style: none; padding: 0; margin: 0; }
+  .intro-list li { padding-left: 28px; position: relative; margin-bottom: 10px; }
+  .intro-list li::before {
+    content: "🎂";
+    position: absolute;
+    left: 0;
+  }
+  .live-box {
+    margin-top: 56px;
+    text-align: center;
+    background: var(--plum);
+    color: var(--cream);
+    border-radius: 20px;
+    padding: 36px 24px;
+  }
+  .live-box h2 { justify-content: center; color: var(--gold); margin-top: 0; }
+  .live-box .link-placeholder {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 14px 24px;
+    border: 2px dashed var(--gold);
+    border-radius: 12px;
+    color: var(--gold);
+    font-weight: 600;
+    font-family: monospace;
+  }
+  .live-box p { color: #d8cbe8; margin-top: 16px; font-size: 0.95rem; }
+  footer {
+    margin-top: 56px;
+    text-align: center;
+    color: var(--plum-soft);
+    font-size: 0.85rem;
+  }
+  .note {
+    background: var(--cream-dark);
+    border-left: 4px solid var(--gold);
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--plum-soft);
+    margin-top: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="emoji">🎉</div>
+    <h1>Birthday Wishes Card</h1>
+    <p>A prototype walkthrough — how the site will work for you and the people you send cards to.</p>
+  </header>
+
+  <div class="card">
+    <p><strong>What it is:</strong> a simple website for making a personalized birthday card for someone — their name, a message from you, and a few photos of your memories together. It creates a private link you can text or share, and it opens nicely on a phone, tablet, or computer.</p>
+    <ul class="intro-list">
+      <li>No sign-up or account needed — just fill in the form and share the link.</li>
+      <li>Works from any device — Android, iPhone, or a regular computer browser.</li>
+      <li>Each card gets its own private, shareable link.</li>
+    </ul>
+  </div>
+
+  <h2><span class="step-num">1</span> Create the card</h2>
+  <div class="card">
+    <p>You open the site, type in the recipient's name, write your birthday message, and add a few photos — memories, selfies together, anything you like.</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="images/01-create-form.png" alt="Create card form" />
+        <div class="caption">The create-card form</div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="step-num">2</span> Get your shareable link</h2>
+  <div class="card">
+    <p>As soon as you hit "Create Card," the site generates a private link for that card and shows it to you — ready to copy or share directly.</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="images/02-card-created.png" alt="Card created confirmation with shareable link" />
+        <div class="caption">Your link is ready to copy or share</div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="step-num">3</span> They open the card</h2>
+  <div class="card">
+    <p>Whoever you send the link to just taps it — no app, no login. They see the name, your message, and the photos in a warm, celebratory layout. It looks just as good on a laptop as it does on a phone.</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="images/03-card-view-mobile.png" alt="Birthday card view on mobile" />
+        <div class="caption">On a phone</div>
+      </div>
+      <div class="shot desktop">
+        <img src="images/04-card-view-desktop.png" alt="Birthday card view on desktop" />
+        <div class="caption">On a computer</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    Note: the sample above ("Aarav") is a demo card made with placeholder colored tiles instead of real photos, just to show how the layout looks — every screenshot here is from the actual working site, not a mockup.
+  </div>
+
+  <div class="live-box">
+    <h2>Try it yourself</h2>
+    <div class="link-placeholder">🔗 Live link coming soon</div>
+    <p>Once the site is hosted online, the real link will go here — you'll be able to open it and create your own card right away.</p>
+  </div>
+
+  <footer>
+    Made for you 🎈 — built and tested end-to-end before this doc was put together.
+  </footer>
+
+</div>
+</body>
+</html>
