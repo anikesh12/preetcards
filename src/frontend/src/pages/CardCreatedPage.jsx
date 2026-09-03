@@ -181,7 +181,7 @@ export default function CardCreatedPage() {
     );
   }
 
-  const cardPath = `/${cardId}`;
+  const cardPath = `/card/${cardId}`;
   const cardUrl = origin ? `${origin}${cardPath}` : cardPath;
 
   return (
