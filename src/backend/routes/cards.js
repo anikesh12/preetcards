@@ -6,12 +6,18 @@ const { processImages, toPhotoPathsJson, fromPhotoPathsJson } = require('../util
 
 const router = express.Router();
 
+const COLLAGE_LAYOUTS = ['grid', 'spotlight', 'filmstrip', 'scatter'];
+const DEFAULT_COLLAGE_LAYOUT = 'grid';
+
 // POST /api/cards - create a new card
 router.post('/', upload.array('photos', MAX_PHOTOS), verifyImageContents, async (req, res, next) => {
   const files = req.files || [];
 
   try {
     const { recipientName, message } = req.body;
+    const collageLayout = COLLAGE_LAYOUTS.includes(req.body.collageLayout)
+      ? req.body.collageLayout
+      : DEFAULT_COLLAGE_LAYOUT;
 
     if (!recipientName || !recipientName.trim()) {
       cleanupFiles(files);
@@ -31,15 +37,16 @@ router.post('/', upload.array('photos', MAX_PHOTOS), verifyImageContents, async 
     const createdAt = new Date().toISOString();
 
     db.prepare(
-      `INSERT INTO cards (slug, recipient_name, message, photo_paths, created_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(id, recipientName.trim(), message.trim(), toPhotoPathsJson(photoPaths), createdAt);
+      `INSERT INTO cards (slug, recipient_name, message, photo_paths, collage_layout, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, recipientName.trim(), message.trim(), toPhotoPathsJson(photoPaths), collageLayout, createdAt);
 
     res.status(201).json({
       id,
       recipientName: recipientName.trim(),
       message: message.trim(),
       photoPaths,
+      collageLayout,
       createdAt,
     });
   } catch (err) {
@@ -56,7 +63,7 @@ router.get('/:id', (req, res) => {
 
     const row = db
       .prepare(
-        `SELECT slug, recipient_name, message, photo_paths, created_at
+        `SELECT slug, recipient_name, message, photo_paths, collage_layout, created_at
          FROM cards WHERE slug = ?`
       )
       .get(id);
@@ -73,6 +80,7 @@ router.get('/:id', (req, res) => {
       message: row.message,
       photoPaths,
       photos: photoPaths.map((url, index) => ({ id: index, url, thumbnailUrl: url })),
+      collageLayout: COLLAGE_LAYOUTS.includes(row.collage_layout) ? row.collage_layout : DEFAULT_COLLAGE_LAYOUT,
       createdAt: row.created_at,
     });
   } catch (err) {

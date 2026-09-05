@@ -17,6 +17,7 @@ const COLUMNS = Object.freeze({
   RECIPIENT_NAME: 'recipient_name',
   MESSAGE: 'message',
   PHOTO_PATHS: 'photo_paths', // JSON-encoded array of strings, stored as TEXT
+  COLLAGE_LAYOUT: 'collage_layout', // one of: grid, spotlight, filmstrip, scatter
   CREATED_AT: 'created_at',
 });
 
@@ -27,6 +28,7 @@ const COLUMN_LIST = Object.freeze([
   COLUMNS.RECIPIENT_NAME,
   COLUMNS.MESSAGE,
   COLUMNS.PHOTO_PATHS,
+  COLUMNS.COLLAGE_LAYOUT,
   COLUMNS.CREATED_AT,
 ]);
 
@@ -58,6 +60,7 @@ db.exec(`
     ${COLUMNS.RECIPIENT_NAME} TEXT NOT NULL,
     ${COLUMNS.MESSAGE} TEXT NOT NULL,
     ${COLUMNS.PHOTO_PATHS} TEXT NOT NULL DEFAULT '[]',
+    ${COLUMNS.COLLAGE_LAYOUT} TEXT NOT NULL DEFAULT 'grid',
     ${COLUMNS.CREATED_AT} TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);

@@ -197,6 +197,8 @@ export default function CardViewPage() {
   const openLightbox = (idx) => setLightboxIndex(idx);
   const closeLightbox = () => setLightboxIndex(null);
   const photos = card?.photos || [];
+  const COLLAGE_LAYOUTS = ['grid', 'spotlight', 'filmstrip', 'scatter'];
+  const collageLayout = COLLAGE_LAYOUTS.includes(card?.collageLayout) ? card.collageLayout : 'grid';
   const prevPhoto = () =>
     setLightboxIndex((i) => (i === 0 ? photos.length - 1 : i - 1));
   const nextPhoto = () =>
@@ -260,21 +262,6 @@ export default function CardViewPage() {
           margin: 0 0 16px;
           color: #2E1F3B;
         }
-        .cv-gallery {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 12px;
-        }
-        @media (min-width: 640px) {
-          .cv-gallery {
-            grid-template-columns: repeat(3, 1fr);
-          }
-        }
-        @media (min-width: 900px) {
-          .cv-gallery {
-            grid-template-columns: repeat(4, 1fr);
-          }
-        }
         .cv-photo-wrap {
           position: relative;
           border-radius: 14px;
@@ -294,6 +281,78 @@ export default function CardViewPage() {
         }
         .cv-photo-wrap:hover img {
           transform: scale(1.06);
+        }
+
+        /* --- Grid: classic even grid --- */
+        .cv-gallery--grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+        }
+        @media (min-width: 640px) {
+          .cv-gallery--grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (min-width: 900px) {
+          .cv-gallery--grid { grid-template-columns: repeat(4, 1fr); }
+        }
+
+        /* --- Spotlight: one featured photo, rest smaller below --- */
+        .cv-gallery--spotlight {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+        }
+        .cv-gallery--spotlight .cv-photo-wrap:first-child {
+          grid-column: 1 / -1;
+          aspect-ratio: 16 / 10;
+        }
+        @media (min-width: 640px) {
+          .cv-gallery--spotlight { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        /* --- Filmstrip: horizontal scrolling strip --- */
+        .cv-gallery--filmstrip {
+          display: flex;
+          gap: 14px;
+          overflow-x: auto;
+          padding-bottom: 10px;
+          scroll-snap-type: x mandatory;
+          -webkit-overflow-scrolling: touch;
+        }
+        .cv-gallery--filmstrip .cv-photo-wrap {
+          flex: 0 0 auto;
+          width: 180px;
+          aspect-ratio: 3 / 4;
+          scroll-snap-align: center;
+        }
+
+        /* --- Scatter: polaroid-style overlapping tiles --- */
+        .cv-gallery--scatter {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 28px 12px;
+          justify-content: center;
+          padding: 16px 8px 24px;
+        }
+        .cv-gallery--scatter .cv-photo-wrap {
+          width: 150px;
+          aspect-ratio: 1 / 1.1;
+          background: #fff;
+          border: none;
+          padding: 8px 8px 24px;
+          box-shadow: 0 6px 16px rgba(46, 31, 59, 0.2);
+          border-radius: 4px;
+          transition: transform 0.2s ease;
+        }
+        .cv-gallery--scatter .cv-photo-wrap img {
+          border-radius: 2px;
+        }
+        .cv-gallery--scatter .cv-photo-wrap:nth-child(3n) { transform: rotate(-5deg); }
+        .cv-gallery--scatter .cv-photo-wrap:nth-child(3n + 1) { transform: rotate(4deg); }
+        .cv-gallery--scatter .cv-photo-wrap:nth-child(3n + 2) { transform: rotate(-2deg); }
+        .cv-gallery--scatter .cv-photo-wrap:hover {
+          transform: rotate(0deg) scale(1.07);
+          z-index: 2;
         }
         .cv-skeleton {
           background: linear-gradient(90deg, #f0e9dd 25%, #f7f1e6 37%, #f0e9dd 63%);
@@ -496,7 +555,7 @@ export default function CardViewPage() {
                 {photos.length > 0 && (
                   <>
                     <h2 className="cv-gallery-title">Memories</h2>
-                    <div className="cv-gallery">
+                    <div className={`cv-gallery cv-gallery--${collageLayout}`}>
                       {photos.map((photo, idx) => (
                         <div
                           key={photo.id || idx}

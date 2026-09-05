@@ -6,6 +6,51 @@ const MAX_MESSAGE_LENGTH = 500;
 const MAX_FILE_SIZE_MB = 8;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
+const COLLAGE_LAYOUTS = [
+  { value: 'grid', label: 'Grid' },
+  { value: 'spotlight', label: 'Spotlight' },
+  { value: 'filmstrip', label: 'Filmstrip' },
+  { value: 'scatter', label: 'Scatter' },
+];
+
+function CollagePreview({ layout }) {
+  if (layout === 'spotlight') {
+    return (
+      <span className="collage-preview collage-preview--spotlight" aria-hidden="true">
+        <span className="cp-block cp-big" />
+        <span className="cp-block cp-small" />
+        <span className="cp-block cp-small" />
+      </span>
+    );
+  }
+  if (layout === 'filmstrip') {
+    return (
+      <span className="collage-preview collage-preview--filmstrip" aria-hidden="true">
+        <span className="cp-block cp-strip" />
+        <span className="cp-block cp-strip" />
+        <span className="cp-block cp-strip" />
+      </span>
+    );
+  }
+  if (layout === 'scatter') {
+    return (
+      <span className="collage-preview collage-preview--scatter" aria-hidden="true">
+        <span className="cp-block cp-tile cp-tile-1" />
+        <span className="cp-block cp-tile cp-tile-2" />
+        <span className="cp-block cp-tile cp-tile-3" />
+      </span>
+    );
+  }
+  return (
+    <span className="collage-preview collage-preview--grid" aria-hidden="true">
+      <span className="cp-block cp-tile" />
+      <span className="cp-block cp-tile" />
+      <span className="cp-block cp-tile" />
+      <span className="cp-block cp-tile" />
+    </span>
+  );
+}
+
 export default function CreateCardPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
@@ -13,6 +58,7 @@ export default function CreateCardPage() {
   const [recipientName, setRecipientName] = useState('');
   const [message, setMessage] = useState('');
   const [photos, setPhotos] = useState([]); // { file, previewUrl }
+  const [collageLayout, setCollageLayout] = useState('grid');
   const [errors, setErrors] = useState({});
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -128,6 +174,7 @@ export default function CreateCardPage() {
       const formData = new FormData();
       formData.append('recipientName', recipientName.trim());
       formData.append('message', message.trim());
+      formData.append('collageLayout', collageLayout);
       photos.forEach(({ file }) => {
         formData.append('photos', file);
       });
@@ -343,6 +390,102 @@ export default function CreateCardPage() {
           justify-content: center;
         }
 
+        .collage-options {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+        }
+
+        .collage-option {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 10px;
+          border-radius: 14px;
+          border: 2px solid #FFF3E2;
+          background: #FFFBF5;
+          cursor: pointer;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .collage-option:hover {
+          border-color: #FFC75F;
+        }
+
+        .collage-option input {
+          position: absolute;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .collage-option.is-selected {
+          border-color: #FF6F91;
+          background: #FFF0F4;
+        }
+
+        .collage-option-label {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: #2E1F3B;
+        }
+
+        .collage-preview {
+          width: 64px;
+          height: 44px;
+          position: relative;
+          display: block;
+        }
+
+        .cp-block {
+          position: absolute;
+          background: #FFC75F;
+          border-radius: 3px;
+        }
+
+        .collage-preview--grid .cp-tile {
+          width: 28px;
+          height: 18px;
+        }
+        .collage-preview--grid .cp-tile:nth-child(1) { top: 0; left: 0; background: #FF6F91; }
+        .collage-preview--grid .cp-tile:nth-child(2) { top: 0; right: 0; background: #FFC75F; }
+        .collage-preview--grid .cp-tile:nth-child(3) { bottom: 0; left: 0; background: #FFC75F; }
+        .collage-preview--grid .cp-tile:nth-child(4) { bottom: 0; right: 0; background: #FF6F91; }
+
+        .collage-preview--spotlight .cp-big {
+          top: 0; left: 0;
+          width: 64px; height: 26px;
+          background: #FF6F91;
+        }
+        .collage-preview--spotlight .cp-small {
+          bottom: 0;
+          width: 28px; height: 16px;
+          background: #FFC75F;
+        }
+        .collage-preview--spotlight .cp-small:nth-of-type(2) { left: 0; }
+        .collage-preview--spotlight .cp-small:nth-of-type(3) { right: 0; }
+
+        .collage-preview--filmstrip .cp-strip {
+          top: 0;
+          width: 18px;
+          height: 44px;
+          background: #FFC75F;
+        }
+        .collage-preview--filmstrip .cp-strip:nth-child(1) { left: 0; background: #FF6F91; }
+        .collage-preview--filmstrip .cp-strip:nth-child(2) { left: 23px; }
+        .collage-preview--filmstrip .cp-strip:nth-child(3) { left: 46px; background: #FF6F91; }
+
+        .collage-preview--scatter .cp-tile {
+          width: 26px;
+          height: 26px;
+          background: #ffffff;
+          border: 1px solid #F0E4D8;
+          box-shadow: 0 2px 6px rgba(46, 31, 59, 0.15);
+        }
+        .collage-preview--scatter .cp-tile-1 { top: 2px; left: 4px; transform: rotate(-8deg); background: #FF6F91; }
+        .collage-preview--scatter .cp-tile-2 { top: 10px; left: 22px; transform: rotate(6deg); background: #FFC75F; }
+        .collage-preview--scatter .cp-tile-3 { top: 0; left: 38px; transform: rotate(-4deg); background: #FF6F91; }
+
         .submit-error {
           background: #FFF0EC;
           border: 1px solid rgba(232, 80, 58, 0.3);
@@ -500,6 +643,28 @@ export default function CreateCardPage() {
           )}
 
           {errors.photos && <p className="field-error">{errors.photos}</p>}
+        </div>
+
+        <div className="form-field">
+          <label>Collage Style</label>
+          <div className="collage-options" role="radiogroup" aria-label="Collage style">
+            {COLLAGE_LAYOUTS.map((option) => (
+              <label
+                key={option.value}
+                className={`collage-option${collageLayout === option.value ? ' is-selected' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="collageLayout"
+                  value={option.value}
+                  checked={collageLayout === option.value}
+                  onChange={() => setCollageLayout(option.value)}
+                />
+                <CollagePreview layout={option.value} />
+                <span className="collage-option-label">{option.label}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         {submitError && <p className="submit-error">{submitError}</p>}
