@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import AdSlot from '../components/AdSlot';
 
 const API_BASE = '/api/cards';
 
@@ -272,12 +273,69 @@ export default function CardViewPage() {
           margin-bottom: 36px;
           border: 1px solid rgba(255, 111, 145, 0.15);
         }
+        .ad-slot {
+          margin-bottom: 36px;
+        }
+        .ad-slot--placeholder {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 90px;
+          border: 1.5px dashed rgba(46, 31, 59, 0.2);
+          border-radius: 12px;
+          color: #5A4770;
+          font-size: 0.85rem;
+          background: rgba(46, 31, 59, 0.03);
+        }
+        .cv-gallery-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
         .cv-gallery-title {
           font-family: 'Poppins', system-ui, sans-serif;
           font-weight: 600;
           font-size: 1.3rem;
-          margin: 0 0 16px;
+          margin: 0;
           color: #2E1F3B;
+        }
+        .cv-remove-watermark-btn {
+          border: 1.5px solid #FFC75F;
+          background: #FFFDF9;
+          color: #2E1F3B;
+          font-size: 0.78rem;
+          font-weight: 600;
+          padding: 6px 12px;
+          border-radius: 999px;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 0.15s ease;
+        }
+        .cv-remove-watermark-btn:hover {
+          background: #FFF3D9;
+        }
+        .cv-download-btn {
+          position: absolute;
+          bottom: 6px;
+          right: 6px;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          background: rgba(46, 31, 59, 0.65);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.95rem;
+          text-decoration: none;
+          backdrop-filter: blur(2px);
+          transition: background 0.15s ease, transform 0.15s ease;
+        }
+        .cv-download-btn:hover {
+          background: rgba(255, 111, 145, 0.9);
+          transform: scale(1.08);
         }
         .cv-photo-wrap {
           position: relative;
@@ -569,9 +627,19 @@ export default function CardViewPage() {
               <>
                 <h1 className="cv-heading">{occasionHeading(card.occasion)}, {card.recipientName}!</h1>
                 <div className="cv-message-panel">{card.message}</div>
+                <AdSlot occasion={card.occasion} />
                 {photos.length > 0 && (
                   <>
-                    <h2 className="cv-gallery-title">Memories</h2>
+                    <div className="cv-gallery-header">
+                      <h2 className="cv-gallery-title">Memories</h2>
+                      <button
+                        type="button"
+                        className="cv-remove-watermark-btn"
+                        onClick={() => showToast('Watermark-free downloads coming soon! ✨')}
+                      >
+                        Remove Watermark
+                      </button>
+                    </div>
                     <div className={`cv-gallery cv-gallery--${collageLayout}`}>
                       {photos.map((photo, idx) => (
                         <div
@@ -584,6 +652,15 @@ export default function CardViewPage() {
                             alt={`Photo ${idx + 1} of ${card.recipientName}`}
                             loading="lazy"
                           />
+                          <a
+                            className="cv-download-btn"
+                            href={`${API_BASE}/${card.id}/download/${photo.url.split('/').pop()}`}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Download photo ${idx + 1}`}
+                            title="Download (watermarked)"
+                          >
+                            ⬇
+                          </a>
                         </div>
                       ))}
                     </div>

@@ -1,11 +1,18 @@
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const { nanoid } = require('nanoid');
 const { db } = require('../db');
 const { upload, verifyImageContents, cleanupFiles, MAX_FILES: MAX_PHOTOS } = require('../middleware/upload');
-const { processImages, toPhotoPathsJson, fromPhotoPathsJson } = require('../utils/imageProcessing');
+const {
+  processImages, toPhotoPathsJson, fromPhotoPathsJson, getSafeCardUploadDir,
+} = require('../utils/imageProcessing');
 const { logEvent } = require('../utils/analytics');
+const { watermarkImage } = require('../utils/watermark');
 
 const router = express.Router();
+
+const SAFE_FILENAME_PATTERN = /^[a-zA-Z0-9_-]+\.jpg$/;
 
 const COLLAGE_LAYOUTS = ['grid', 'spotlight', 'filmstrip', 'scatter'];
 const DEFAULT_COLLAGE_LAYOUT = 'grid';
@@ -100,6 +107,48 @@ router.get('/:id', (req, res) => {
   } catch (err) {
     console.error('Error fetching card:', err);
     res.status(500).json({ error: 'Failed to fetch card' });
+  }
+});
+
+// GET /api/cards/:id/download/:filename - watermarked photo download (free tier)
+router.get('/:id/download/:filename', async (req, res) => {
+  try {
+    const { id, filename } = req.params;
+
+    if (!SAFE_FILENAME_PATTERN.test(filename)) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    const row = db.prepare('SELECT photo_paths FROM cards WHERE slug = ?').get(id);
+    if (!row) {
+      return res.status(404).json({ error: 'Card not found' });
+    }
+
+    const photoPaths = fromPhotoPathsJson(row.photo_paths);
+    const isKnownPhoto = photoPaths.includes(`/uploads/${id}/${filename}`);
+    if (!isKnownPhoto) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    let cardUploadDir;
+    try {
+      cardUploadDir = getSafeCardUploadDir(id);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid card ID' });
+    }
+
+    const filePath = path.join(cardUploadDir, filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+
+    const buffer = await watermarkImage(filePath);
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Content-Disposition', `attachment; filename="${id}-${filename}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error generating watermarked download:', err);
+    res.status(500).json({ error: 'Failed to generate download' });
   }
 });
 

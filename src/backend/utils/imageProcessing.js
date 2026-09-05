@@ -166,6 +166,7 @@ module.exports = {
   UPLOADS_DIR,
   MAX_PHOTOS,
   validateCardId,
+  getSafeCardUploadDir,
   ensureCardUploadDir,
   processImages,
   deleteCardImages,
