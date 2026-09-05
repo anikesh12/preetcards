@@ -6,6 +6,19 @@ const MAX_MESSAGE_LENGTH = 500;
 const MAX_FILE_SIZE_MB = 8;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
+const OCCASIONS = [
+  { value: 'birthday', label: 'Birthday' },
+  { value: 'anniversary', label: 'Anniversary' },
+  { value: 'wedding', label: 'Wedding' },
+  { value: 'engagement', label: 'Engagement' },
+  { value: 'congratulations', label: 'Congratulations' },
+  { value: 'new_baby', label: 'New Baby' },
+  { value: 'get_well', label: 'Get Well Soon' },
+  { value: 'farewell', label: 'Farewell' },
+  { value: 'retirement', label: 'Retirement' },
+  { value: 'thank_you', label: 'Thank You' },
+];
+
 const COLLAGE_LAYOUTS = [
   { value: 'grid', label: 'Grid' },
   { value: 'spotlight', label: 'Spotlight' },
@@ -55,6 +68,7 @@ export default function CreateCardPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
+  const [occasion, setOccasion] = useState('birthday');
   const [recipientName, setRecipientName] = useState('');
   const [message, setMessage] = useState('');
   const [photos, setPhotos] = useState([]); // { file, previewUrl }
@@ -172,6 +186,7 @@ export default function CreateCardPage() {
 
     try {
       const formData = new FormData();
+      formData.append('occasion', occasion);
       formData.append('recipientName', recipientName.trim());
       formData.append('message', message.trim());
       formData.append('collageLayout', collageLayout);
@@ -268,6 +283,7 @@ export default function CreateCardPage() {
         }
 
         .form-field input[type="text"],
+        .form-field select,
         .form-field textarea {
           width: 100%;
           box-sizing: border-box;
@@ -281,16 +297,27 @@ export default function CreateCardPage() {
           transition: border-color 0.15s ease, background 0.15s ease;
         }
 
+        .form-field select {
+          appearance: none;
+          -webkit-appearance: none;
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'><path d='M1 1l6 6 6-6' stroke='%235A4770' stroke-width='2' fill='none' fill-rule='evenodd'/></svg>");
+          background-repeat: no-repeat;
+          background-position: right 16px center;
+          padding-right: 40px;
+          cursor: pointer;
+        }
+
         .form-field input[type="text"]::placeholder,
         .form-field textarea::placeholder {
           color: #B3A6C2;
         }
 
         .form-field input[type="text"]:focus,
+        .form-field select:focus,
         .form-field textarea:focus {
           outline: none;
           border-color: #FF6F91;
-          background: #ffffff;
+          background-color: #ffffff;
         }
 
         .form-field textarea {
@@ -549,6 +576,20 @@ export default function CreateCardPage() {
       </header>
 
       <form className="create-card-form" onSubmit={handleSubmit} noValidate>
+        <div className="form-field">
+          <label htmlFor="occasion">Occasion</label>
+          <select
+            id="occasion"
+            name="occasion"
+            value={occasion}
+            onChange={(e) => setOccasion(e.target.value)}
+          >
+            {OCCASIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="form-field">
           <label htmlFor="recipientName">Recipient Name</label>
           <input

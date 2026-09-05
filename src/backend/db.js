@@ -14,6 +14,7 @@ const TABLE = 'cards';
 const COLUMNS = Object.freeze({
   ID: 'id',
   SLUG: 'slug',
+  OCCASION: 'occasion', // birthday, anniversary, wedding, engagement, congratulations, new_baby, get_well, farewell, retirement, thank_you
   RECIPIENT_NAME: 'recipient_name',
   MESSAGE: 'message',
   PHOTO_PATHS: 'photo_paths', // JSON-encoded array of strings, stored as TEXT
@@ -25,6 +26,7 @@ const COLUMNS = Object.freeze({
 const COLUMN_LIST = Object.freeze([
   COLUMNS.ID,
   COLUMNS.SLUG,
+  COLUMNS.OCCASION,
   COLUMNS.RECIPIENT_NAME,
   COLUMNS.MESSAGE,
   COLUMNS.PHOTO_PATHS,
@@ -57,6 +59,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS ${TABLE} (
     ${COLUMNS.ID} INTEGER PRIMARY KEY AUTOINCREMENT,
     ${COLUMNS.SLUG} TEXT NOT NULL UNIQUE,
+    ${COLUMNS.OCCASION} TEXT NOT NULL DEFAULT 'birthday',
     ${COLUMNS.RECIPIENT_NAME} TEXT NOT NULL,
     ${COLUMNS.MESSAGE} TEXT NOT NULL,
     ${COLUMNS.PHOTO_PATHS} TEXT NOT NULL DEFAULT '[]',

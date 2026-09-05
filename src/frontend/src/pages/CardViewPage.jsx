@@ -3,10 +3,27 @@ import { useParams, Link } from 'react-router-dom';
 
 const API_BASE = '/api/cards';
 
+const OCCASION_HEADINGS = {
+  birthday: 'Happy Birthday',
+  anniversary: 'Happy Anniversary',
+  wedding: 'Congratulations on Your Wedding',
+  engagement: 'Congratulations on Your Engagement',
+  congratulations: 'Congratulations',
+  new_baby: 'Congratulations',
+  get_well: 'Get Well Soon',
+  farewell: 'Farewell',
+  retirement: 'Happy Retirement',
+  thank_you: 'Thank You',
+};
+
+function occasionHeading(occasion) {
+  return OCCASION_HEADINGS[occasion] || OCCASION_HEADINGS.birthday;
+}
+
 function SkeletonGallery() {
   const items = Array.from({ length: 6 });
   return (
-    <div className="cv-gallery">
+    <div className="cv-gallery cv-gallery--grid">
       {items.map((_, i) => (
         <div key={i} className="cv-skeleton cv-skeleton-photo" />
       ))}
@@ -172,8 +189,8 @@ export default function CardViewPage() {
   const handleShare = useCallback(async () => {
     const url = window.location.href;
     const shareData = {
-      title: card ? `Happy Birthday, ${card.recipientName}!` : 'Birthday Card',
-      text: 'Check out this birthday card!',
+      title: card ? `${occasionHeading(card.occasion)}, ${card.recipientName}!` : 'Wishing Card',
+      text: 'Check out this card!',
       url,
     };
 
@@ -550,7 +567,7 @@ export default function CardViewPage() {
               </>
             ) : (
               <>
-                <h1 className="cv-heading">Happy Birthday, {card.recipientName}!</h1>
+                <h1 className="cv-heading">{occasionHeading(card.occasion)}, {card.recipientName}!</h1>
                 <div className="cv-message-panel">{card.message}</div>
                 {photos.length > 0 && (
                   <>

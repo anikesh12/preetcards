@@ -9,6 +9,12 @@ const router = express.Router();
 const COLLAGE_LAYOUTS = ['grid', 'spotlight', 'filmstrip', 'scatter'];
 const DEFAULT_COLLAGE_LAYOUT = 'grid';
 
+const OCCASIONS = [
+  'birthday', 'anniversary', 'wedding', 'engagement', 'congratulations',
+  'new_baby', 'get_well', 'farewell', 'retirement', 'thank_you',
+];
+const DEFAULT_OCCASION = 'birthday';
+
 // POST /api/cards - create a new card
 router.post('/', upload.array('photos', MAX_PHOTOS), verifyImageContents, async (req, res, next) => {
   const files = req.files || [];
@@ -18,6 +24,9 @@ router.post('/', upload.array('photos', MAX_PHOTOS), verifyImageContents, async 
     const collageLayout = COLLAGE_LAYOUTS.includes(req.body.collageLayout)
       ? req.body.collageLayout
       : DEFAULT_COLLAGE_LAYOUT;
+    const occasion = OCCASIONS.includes(req.body.occasion)
+      ? req.body.occasion
+      : DEFAULT_OCCASION;
 
     if (!recipientName || !recipientName.trim()) {
       cleanupFiles(files);
@@ -37,12 +46,13 @@ router.post('/', upload.array('photos', MAX_PHOTOS), verifyImageContents, async 
     const createdAt = new Date().toISOString();
 
     db.prepare(
-      `INSERT INTO cards (slug, recipient_name, message, photo_paths, collage_layout, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(id, recipientName.trim(), message.trim(), toPhotoPathsJson(photoPaths), collageLayout, createdAt);
+      `INSERT INTO cards (slug, occasion, recipient_name, message, photo_paths, collage_layout, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, occasion, recipientName.trim(), message.trim(), toPhotoPathsJson(photoPaths), collageLayout, createdAt);
 
     res.status(201).json({
       id,
+      occasion,
       recipientName: recipientName.trim(),
       message: message.trim(),
       photoPaths,
@@ -63,7 +73,7 @@ router.get('/:id', (req, res) => {
 
     const row = db
       .prepare(
-        `SELECT slug, recipient_name, message, photo_paths, collage_layout, created_at
+        `SELECT slug, occasion, recipient_name, message, photo_paths, collage_layout, created_at
          FROM cards WHERE slug = ?`
       )
       .get(id);
@@ -76,6 +86,7 @@ router.get('/:id', (req, res) => {
 
     res.json({
       id: row.slug,
+      occasion: OCCASIONS.includes(row.occasion) ? row.occasion : DEFAULT_OCCASION,
       recipientName: row.recipient_name,
       message: row.message,
       photoPaths,
