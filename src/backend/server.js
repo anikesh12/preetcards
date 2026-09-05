@@ -1,3 +1,10 @@
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env file present -- fine locally without one, and expected in
+  // production where real environment variables are set directly.
+}
+
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -21,6 +28,14 @@ app.use(ensureDeviceId);
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
 
 // ---- API Routes ----
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    tipJarUrl: process.env.TIP_JAR_URL || null,
+    adsenseClientId: process.env.ADSENSE_CLIENT_ID || null,
+    adsenseSlotId: process.env.ADSENSE_SLOT_ID || null,
+  });
+});
 
 app.use('/api/cards', cardsRouter, handleUploadErrors);
 

@@ -102,6 +102,16 @@ const styles = {
     textUnderlineOffset: 3,
     padding: '8px',
   },
+  tipJarLink: {
+    display: 'inline-block',
+    marginTop: 20,
+    color: '#5A4A6A',
+    fontSize: 13,
+    textDecoration: 'none',
+    borderTop: '1px solid #F0E4D8',
+    paddingTop: 16,
+    width: '100%',
+  },
   errorHeading: {
     fontSize: 24,
     fontWeight: 700,
@@ -152,11 +162,19 @@ export default function CardCreatedPage() {
   const recipientName = location.state?.recipientName;
 
   const [origin, setOrigin] = useState('');
+  const [tipJarUrl, setTipJarUrl] = useState(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setOrigin(window.location.origin);
     }
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((config) => setTipJarUrl(config?.tipJarUrl || null))
+      .catch(() => setTipJarUrl(null));
   }, []);
 
   useEffect(() => {
@@ -227,6 +245,12 @@ export default function CardCreatedPage() {
               Create Another Card
             </Link>
           </div>
+
+          {tipJarUrl && (
+            <a href={tipJarUrl} target="_blank" rel="noopener noreferrer" style={styles.tipJarLink}>
+              ☕ Enjoyed this? Support us
+            </a>
+          )}
         </div>
       </div>
     </div>
