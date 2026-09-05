@@ -4,6 +4,7 @@ const express = require('express');
 require('./db');
 const cardsRouter = require('./routes/cards');
 const { handleUploadErrors } = require('./middleware/upload');
+const { ensureDeviceId } = require('./utils/analytics');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,6 +17,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 app.use(express.json());
+app.use(ensureDeviceId);
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
 
 // ---- API Routes ----

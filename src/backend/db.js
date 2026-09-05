@@ -76,10 +76,41 @@ db.exec(`
 // earlier schema design, since photo paths now live on the cards row itself.
 db.exec(`DROP TABLE IF EXISTS card_images;`);
 
+// ---------------------------------------------------------------------------
+// `events` table -- internal analytics only, never exposed to end users.
+// One row per meaningful request (a card being created, or a card being
+// viewed). Used to compute per-card view counts and to spot abuse patterns
+// (e.g. the same device/IP hitting the site repeatedly) before enabling ad
+// placements. `device_id` is a random, non-identifying value stored in a
+// first-party cookie -- it does not tie back to a real person.
+// ---------------------------------------------------------------------------
+const EVENTS_TABLE = 'events';
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE} (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    card_slug TEXT,
+    device_id TEXT NOT NULL,
+    ip_address TEXT,
+    city TEXT,
+    country TEXT,
+    browser TEXT,
+    os TEXT,
+    device_type TEXT,
+    referer TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+db.exec(`CREATE INDEX IF NOT EXISTS idx_${EVENTS_TABLE}_card_slug ON ${EVENTS_TABLE} (card_slug);`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_${EVENTS_TABLE}_device_id ON ${EVENTS_TABLE} (device_id);`);
+
 module.exports = {
   db,
   TABLE,
   COLUMNS,
   COLUMN_LIST,
   DB_PATH,
+  EVENTS_TABLE,
 };

@@ -3,6 +3,7 @@ const { nanoid } = require('nanoid');
 const { db } = require('../db');
 const { upload, verifyImageContents, cleanupFiles, MAX_FILES: MAX_PHOTOS } = require('../middleware/upload');
 const { processImages, toPhotoPathsJson, fromPhotoPathsJson } = require('../utils/imageProcessing');
+const { logEvent } = require('../utils/analytics');
 
 const router = express.Router();
 
@@ -49,6 +50,7 @@ router.post('/', upload.array('photos', MAX_PHOTOS), verifyImageContents, async 
       `INSERT INTO cards (slug, occasion, recipient_name, message, photo_paths, collage_layout, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(id, occasion, recipientName.trim(), message.trim(), toPhotoPathsJson(photoPaths), collageLayout, createdAt);
+    logEvent(req, 'create', id);
 
     res.status(201).json({
       id,
@@ -83,6 +85,7 @@ router.get('/:id', (req, res) => {
     }
 
     const photoPaths = fromPhotoPathsJson(row.photo_paths);
+    logEvent(req, 'view', id);
 
     res.json({
       id: row.slug,
