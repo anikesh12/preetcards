@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Birthday Wishes Card — V2 Walkthrough</title>
+<style>
+  :root {
+    --coral: #FF6F91;
+    --gold: #FFC75F;
+    --plum: #2E1F3B;
+    --plum-soft: #5A4770;
+    --cream: #FFFBF5;
+    --cream-dark: #FFF3E2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, var(--cream) 0%, var(--cream-dark) 100%);
+    color: var(--plum);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+  header { text-align: center; margin-bottom: 32px; }
+  header .emoji { font-size: 48px; }
+  .back-link { text-align: center; margin-bottom: 24px; }
+  .back-link a { color: var(--plum-soft); font-size: 0.85rem; text-decoration: none; }
+  .back-link a:hover { text-decoration: underline; }
+  h1 {
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    margin: 8px 0 4px;
+    color: var(--gold);
+    text-shadow: 1.5px 1.5px 0 var(--plum), -1px -1px 0 var(--plum), 1px -1px 0 var(--plum), -1px 1px 0 var(--plum);
+  }
+  header p { color: var(--plum-soft); font-size: 1.05rem; margin: 0; }
+  h2 {
+    font-size: 1.4rem;
+    margin: 56px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--coral);
+    color: white;
+    font-weight: 700;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .card {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(46, 31, 59, 0.10);
+    padding: 28px;
+    margin-top: 16px;
+  }
+  .card p { margin: 0 0 16px; color: var(--plum-soft); }
+  .card p:last-child { margin-bottom: 0; }
+  .shots { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 20px; }
+  .shot { text-align: center; }
+  .shot img {
+    max-width: 260px;
+    width: 100%;
+    border-radius: 16px;
+    border: 1px solid rgba(46, 31, 59, 0.08);
+    box-shadow: 0 6px 20px rgba(46, 31, 59, 0.15);
+  }
+  .shot .caption { font-size: 0.85rem; color: var(--plum-soft); margin-top: 10px; }
+  .note {
+    background: var(--cream-dark);
+    border-left: 4px solid var(--gold);
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--plum-soft);
+    margin-top: 20px;
+  }
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    font-size: 0.92rem;
+  }
+  .compare-table th, .compare-table td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--cream-dark);
+  }
+  .compare-table th { color: var(--plum-soft); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .pill-live { background: rgba(46, 125, 50, 0.12); color: #2E7D32; }
+  .pill-pending { background: rgba(255, 199, 95, 0.25); color: #8a6414; }
+  footer {
+    margin-top: 56px;
+    text-align: center;
+    color: var(--plum-soft);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="back-link"><a href="index.html">← v1 walkthrough</a></div>
+
+  <header>
+    <div class="emoji">✨</div>
+    <h1>Birthday Wishes Card — V2</h1>
+    <p>What's new since v1: more occasions, more ways to show your memories, and the first monetization pieces.</p>
+  </header>
+
+  <h2><span class="step-num">1</span> Any occasion, not just birthdays</h2>
+  <div class="card">
+    <p>The creation form now starts with an "Occasion" dropdown — Birthday, Anniversary, Wedding, Engagement, Congratulations, New Baby, Get Well Soon, Farewell, Retirement, or Thank You. Whichever one you pick, the card page's heading adapts automatically (e.g. "Happy Anniversary, Meera & Raj!").</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="images-v2/01-occasion-collage.png" alt="Occasion dropdown on the creation form" />
+        <div class="caption">Occasion dropdown, top of the form</div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="step-num">2</span> Choose how your photos are shown</h2>
+  <div class="card">
+    <p>Below the photo upload, pick from 4 collage styles for how the memory photos appear on the card: Grid (classic even layout), Spotlight (one featured photo + smaller ones below), Filmstrip (horizontal scroll), and Scatter (polaroid-style, slightly rotated — shown in the example below).</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="images-v2/04-collage-selector.png" alt="Collage style selector with 4 options" />
+        <div class="caption">4 collage styles to choose from</div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="step-num">3</span> Download a memory (with a small watermark)</h2>
+  <div class="card">
+    <p>Each photo on the card page now has a small download button. Downloaded photos carry a subtle "Birthday Wishes 🎉" watermark in the corner — a "Remove Watermark" option is visible for people who want a clean copy (payment for that isn't wired up yet — see the note below).</p>
+    <div class="shots">
+      <div class="shot">
+        <img src="images-v2/02-ad-slot-scatter.png" alt="Card view with scatter collage, download button, and ad space" />
+        <div class="caption">Scatter collage + download button + ad space (see below)</div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="step-num">4</span> The first monetization pieces</h2>
+  <div class="card">
+    <p>Three small ways this can start earning, all visible in the screenshot above and below:</p>
+    <table class="compare-table">
+      <tr><th>Feature</th><th>Status</th><th>What's needed to fully activate</th></tr>
+      <tr><td>Ad space on non-Birthday cards</td><td><span class="pill pill-pending">Placeholder</span></td><td>An approved Google AdSense account (needs the site to be live first)</td></tr>
+      <tr><td>Tip jar on the confirmation page</td><td><span class="pill pill-pending">Hidden by default</span></td><td>A real link (Buy Me a Coffee / PayPal.me / UPI)</td></tr>
+      <tr><td>Watermark on downloads</td><td><span class="pill pill-live">Live</span></td><td>Already working — "Remove Watermark" payment flow is the next step</td></tr>
+    </table>
+    <div class="shots" style="margin-top: 24px;">
+      <div class="shot">
+        <img src="images-v2/03-tip-jar.png" alt="Confirmation page with tip jar link visible" />
+        <div class="caption">Tip jar link (shown here with a demo link, for illustration)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    Every screenshot above is from the actual working v2 build, not a mockup. The tip jar screenshot uses a placeholder demo link just so you can see where it appears — the real build ships with it hidden until a real link is supplied.
+  </div>
+
+  <h2>v1 → v2 at a glance</h2>
+  <div class="card">
+    <table class="compare-table">
+      <tr><th>v1</th><th>v2 adds</th></tr>
+      <tr><td>Birthday cards only</td><td>10 occasions to choose from</td></tr>
+      <tr><td>One fixed photo grid layout</td><td>4 selectable collage styles</td></tr>
+      <tr><td>No way to save a photo</td><td>Watermarked photo downloads</td></tr>
+      <tr><td>No usage data</td><td>Internal view/device analytics (not shown to visitors)</td></tr>
+      <tr><td>No monetization</td><td>Ad slot + tip jar scaffolding, ready to activate</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    Full technical change log (with hour estimates for billing): <code>v2-changelog.md</code>. Future ideas under consideration: <code>monetization-roadmap.md</code>.
+  </footer>
+
+</div>
+</body>
+</html>
