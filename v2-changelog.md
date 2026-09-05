@@ -12,7 +12,13 @@ applied to this list of tasks instead of a fresh brief.
 
 | 4 | Added internal-only analytics: an `events` table logging every card creation and card view (IP → city/country via offline geo lookup, parsed browser/OS/device type, referer, and an anonymous device cookie so repeat visits from the same browser are recognized without identifying anyone). Computes both overall (every hit) and unique-device view counts per card — not shown to end users, queryable on demand via a `scripts/stats.js` lookup script for billing/ad-eligibility decisions later. Verified with a multi-device simulation (repeat views from one "device" correctly don't inflate the unique count; separate devices do) | `backend/db.js`, `backend/server.js`, `backend/routes/cards.js`, `backend/utils/analytics.js`, `backend/scripts/stats.js` | 5 |
 
-**Running total: 17 hours**
+| 5 | Added watermarked photo downloads — each memory photo on the card view page gets a download button that returns a JPEG with a "Birthday Wishes 🎉" badge composited into the corner (sized proportionally, safe even for very small images), plus a "Remove Watermark" upsell button (currently a "coming soon" placeholder, ready to wire to real payment later). Verified with both an edge-case tiny image and a realistic-sized photo — watermark renders correctly, no crashes | `backend/utils/watermark.js`, `backend/utils/imageProcessing.js`, `backend/routes/cards.js`, `frontend/src/pages/CardViewPage.jsx` | 5 |
+| 6 | Added an optional tip jar link on the card confirmation page ("☕ Enjoyed this? Support us") — only shows if a `TIP_JAR_URL` is configured, otherwise stays hidden. Also fixed `.env` files never actually being loaded (the file existed but nothing read it since v1 — a pre-existing gap, not something this feature introduced) | `backend/server.js`, `backend/.env.example`, `frontend/src/pages/CardCreatedPage.jsx` | 2 |
+| 7 | Added an ad slot on non-Birthday occasion cards — shows a real Google AdSense unit once `ADSENSE_CLIENT_ID`/`ADSENSE_SLOT_ID` are configured, or a neutral layout placeholder before that (AdSense requires a live site to approve an account, so the placeholder lets the layout ship now) | `backend/server.js`, `backend/.env.example`, `frontend/src/components/AdSlot.jsx`, `frontend/src/pages/CardViewPage.jsx` | 3 |
+
+**Running total: 27 hours**
 
 ## Planned (not yet started)
-- Ad placement shown when a user selects an occasion other than Birthday (monetization for non-default occasions) — pending a decision on ad network/placement approach. The view/device data from item 4 is what will drive the eligibility rules for this.
+- Real payment wiring for "Remove Watermark" (needs a decision: UPI, Razorpay, Stripe, or a manual request process for v1).
+- A real AdSense account + tip jar destination link — both need to be supplied by the site owner once the site is deployed live.
+- Items 4–7 from the [monetization roadmap](monetization-roadmap.md) (premium collage styles, vanity links, sponsored themes, affiliate gift suggestions).
