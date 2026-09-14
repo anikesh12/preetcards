@@ -1,143 +1,92 @@
 const express = require('express');
+const crypto = require('crypto');
+const analytics = require('../analytics');
+
 const router = express.Router();
-const adminAuth = require('../middleware/adminAuth');
-const { db } = require('../analytics');
 
-router.use(adminAuth);
+const COOKIE_NAME = 'admin_session';
+const SESSION_SECRET =
+  process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || 'birthday-card-admin-secret';
+const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-function getCardCreationTotals() {
-  const lifetime = db
-    .prepare(`SELECT COUNT(*) AS count FROM cards`)
-    .get().count;
-
-  const daily = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM cards
-       WHERE datetime(created_at) >= datetime('now', '-1 day')`
-    )
-    .get().count;
-
-  const weekly = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM cards
-       WHERE datetime(created_at) >= datetime('now', '-7 days')`
-    )
-    .get().count;
-
-  return { lifetime, daily, weekly };
+function getSessionToken() {
+  return crypto
+    .createHmac('sha256', SESSION_SECRET)
+    .update('admin-authenticated')
+    .digest('hex');
 }
 
-function getViewTotals() {
-  const lifetime = db
-    .prepare(`SELECT COUNT(*) AS count FROM card_views`)
-    .get().count;
-
-  const daily = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM card_views
-       WHERE datetime(created_at) >= datetime('now', '-1 day')`
-    )
-    .get().count;
-
-  const weekly = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM card_views
-       WHERE datetime(created_at) >= datetime('now', '-7 days')`
-    )
-    .get().count;
-
-  return { lifetime, daily, weekly };
+function timingSafeStringEqual(a, b) {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
+  if (bufA.length !== bufB.length) {
+    // still run a comparison to keep timing consistent
+    crypto.timingSafeEqual(bufA, bufA);
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function getUniqueDeviceViewTotals() {
-  const totalViews = db
-    .prepare(`SELECT COUNT(*) AS count FROM card_views`)
-    .get().count;
-
-  const uniqueDevices = db
-    .prepare(
-      `SELECT COUNT(DISTINCT device_id) AS count FROM card_views
-       WHERE device_id IS NOT NULL`
-    )
-    .get().count;
-
-  const dailyTotalViews = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM card_views
-       WHERE datetime(created_at) >= datetime('now', '-1 day')`
-    )
-    .get().count;
-
-  const dailyUniqueDevices = db
-    .prepare(
-      `SELECT COUNT(DISTINCT device_id) AS count FROM card_views
-       WHERE device_id IS NOT NULL
-         AND datetime(created_at) >= datetime('now', '-1 day')`
-    )
-    .get().count;
-
-  const weeklyTotalViews = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM card_views
-       WHERE datetime(created_at) >= datetime('now', '-7 days')`
-    )
-    .get().count;
-
-  const weeklyUniqueDevices = db
-    .prepare(
-      `SELECT COUNT(DISTINCT device_id) AS count FROM card_views
-       WHERE device_id IS NOT NULL
-         AND datetime(created_at) >= datetime('now', '-7 days')`
-    )
-    .get().count;
-
+function cookieOptions() {
   return {
-    lifetime: { total: totalViews, uniqueDevices },
-    daily: { total: dailyTotalViews, uniqueDevices: dailyUniqueDevices },
-    weekly: { total: weeklyTotalViews, uniqueDevices: weeklyUniqueDevices },
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: COOKIE_MAX_AGE_MS,
+    path: '/',
   };
 }
 
-router.get('/stats/cards', (req, res) => {
-  try {
-    const totals = getCardCreationTotals();
-    res.json(totals);
-  } catch (err) {
-    console.error('Failed to fetch card creation stats:', err);
-    res.status(500).json({ error: 'Failed to fetch card creation stats' });
+function adminAuth(req, res, next) {
+  const token = req.cookies && req.cookies[COOKIE_NAME];
+  if (token && timingSafeStringEqual(token, getSessionToken())) {
+    return next();
   }
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
+router.post('/login', (req, res) => {
+  const { password } = req.body || {};
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    console.error('ADMIN_PASSWORD is not configured on the server.');
+    return res.status(500).json({ error: 'Admin login is not configured' });
+  }
+
+  if (!password || !timingSafeStringEqual(password, adminPassword)) {
+    return res.status(401).json({ error: 'Invalid password' });
+  }
+
+  res.cookie(COOKIE_NAME, getSessionToken(), cookieOptions());
+  return res.json({ success: true });
 });
 
-router.get('/stats/views', (req, res) => {
-  try {
-    const totals = getViewTotals();
-    res.json(totals);
-  } catch (err) {
-    console.error('Failed to fetch view stats:', err);
-    res.status(500).json({ error: 'Failed to fetch view stats' });
-  }
+router.post('/logout', (req, res) => {
+  res.clearCookie(COOKIE_NAME, { ...cookieOptions(), maxAge: undefined });
+  return res.json({ success: true });
 });
 
-router.get('/stats/views/devices', (req, res) => {
+router.get('/stats', adminAuth, (req, res) => {
   try {
-    const totals = getUniqueDeviceViewTotals();
-    res.json(totals);
-  } catch (err) {
-    console.error('Failed to fetch device view stats:', err);
-    res.status(500).json({ error: 'Failed to fetch device view stats' });
-  }
-});
+    const totalCards = analytics.getTotalCardsCreated();
+    const overallViews = analytics.getTotalViews(); // { total, unique }
+    const dailyViews = analytics.getViewsDaily(30); // [{ date, total, unique }]
+    const weeklyViews = analytics.getViewsWeekly(12); // [{ weekStart, total, unique }]
 
-router.get('/stats', (req, res) => {
-  try {
-    const cards = getCardCreationTotals();
-    const views = getViewTotals();
-    const deviceViews = getUniqueDeviceViewTotals();
-    res.json({ cards, views, deviceViews });
+    return res.json({
+      totalCards,
+      views: {
+        overall: overallViews,
+        daily: dailyViews,
+        weekly: weeklyViews,
+      },
+    });
   } catch (err) {
-    console.error('Failed to fetch admin stats:', err);
-    res.status(500).json({ error: 'Failed to fetch admin stats' });
+    console.error('Failed to load admin stats:', err);
+    return res.status(500).json({ error: 'Failed to load stats' });
   }
 });
 
 module.exports = router;
+module.exports.adminAuth = adminAuth;

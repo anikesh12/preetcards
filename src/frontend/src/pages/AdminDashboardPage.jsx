@@ -1,194 +1,357 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
+const ADMIN_AUTH_KEY = 'adminAuthHeader';
+
 const COLORS = {
   coral: '#FF6F91',
   gold: '#FFC75F',
   plum: '#2E1F3B',
   cream: '#FFFBF5',
-  errorRed: '#E4572E',
+  errorRed: '#D64545',
+  white: '#FFFFFF',
 };
 
-const AUTH_STORAGE_KEY = 'admin_auth_header';
+const styles = {
+  page: {
+    minHeight: '100vh',
+    background: COLORS.cream,
+    color: COLORS.plum,
+    fontFamily: "'Poppins', system-ui, -apple-system, sans-serif",
+    padding: '24px 16px 80px',
+    boxSizing: 'border-box',
+  },
+  loginWrap: {
+    maxWidth: 400,
+    margin: '10vh auto 0',
+    background: COLORS.white,
+    borderRadius: 16,
+    padding: '32px 28px',
+    boxShadow: '0 8px 24px rgba(46,31,59,0.12)',
+  },
+  logoRow: {
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 700,
+    color: COLORS.plum,
+    margin: 0,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#8A7A97',
+    marginTop: 6,
+  },
+  label: {
+    display: 'block',
+    fontSize: 13,
+    fontWeight: 600,
+    marginBottom: 6,
+    marginTop: 16,
+    color: COLORS.plum,
+  },
+  input: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid #E7DCEE',
+    fontSize: 15,
+    outline: 'none',
+    background: COLORS.cream,
+    color: COLORS.plum,
+  },
+  errorText: {
+    color: COLORS.errorRed,
+    fontSize: 13,
+    marginTop: 10,
+  },
+  button: {
+    width: '100%',
+    marginTop: 22,
+    padding: '12px 16px',
+    borderRadius: 12,
+    border: 'none',
+    background: COLORS.coral,
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+    cursor: 'not-allowed',
+  },
+  dashboardWrap: {
+    maxWidth: 960,
+    margin: '0 auto',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 24,
+  },
+  logoutBtn: {
+    padding: '8px 16px',
+    borderRadius: 10,
+    border: `1px solid ${COLORS.plum}`,
+    background: 'transparent',
+    color: COLORS.plum,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  statsRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 16,
+    marginBottom: 32,
+  },
+  statCard: {
+    background: COLORS.white,
+    borderRadius: 16,
+    padding: '20px 18px',
+    boxShadow: '0 4px 14px rgba(46,31,59,0.08)',
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#8A7A97',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statValue: {
+    fontSize: 30,
+    fontWeight: 800,
+    color: COLORS.plum,
+    marginTop: 6,
+  },
+  statAccentGold: {
+    color: '#B8860F',
+  },
+  statAccentCoral: {
+    color: COLORS.coral,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    margin: '32px 0 12px',
+    color: COLORS.plum,
+  },
+  compareRow: {
+    display: 'flex',
+    gap: 24,
+    flexWrap: 'wrap',
+    background: COLORS.white,
+    borderRadius: 16,
+    padding: '20px 18px',
+    boxShadow: '0 4px 14px rgba(46,31,59,0.08)',
+    marginBottom: 8,
+  },
+  compareItem: {
+    flex: '1 1 200px',
+  },
+  barTrack: {
+    width: '100%',
+    height: 10,
+    borderRadius: 6,
+    background: '#F1E7F5',
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  tableWrap: {
+    background: COLORS.white,
+    borderRadius: 16,
+    padding: '8px 18px 16px',
+    boxShadow: '0 4px 14px rgba(46,31,59,0.08)',
+    overflowX: 'auto',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: 14,
+  },
+  th: {
+    textAlign: 'left',
+    padding: '10px 8px',
+    color: '#8A7A97',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    borderBottom: '1px solid #F1E7F5',
+    whiteSpace: 'nowrap',
+  },
+  td: {
+    padding: '10px 8px',
+    borderBottom: '1px solid #F7F1FA',
+    whiteSpace: 'nowrap',
+  },
+  emptyState: {
+    padding: '16px 8px',
+    color: '#8A7A97',
+    fontSize: 14,
+  },
+  loadingWrap: {
+    textAlign: 'center',
+    padding: '60px 20px',
+    color: COLORS.plum,
+  },
+  footerLink: {
+    display: 'inline-block',
+    marginTop: 40,
+    color: COLORS.coral,
+    fontSize: 13,
+    fontWeight: 600,
+    textDecoration: 'none',
+  },
+};
 
-function getStoredAuthHeader() {
-  try {
-    return sessionStorage.getItem(AUTH_STORAGE_KEY) || null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function storeAuthHeader(header) {
-  try {
-    sessionStorage.setItem(AUTH_STORAGE_KEY, header);
-  } catch (e) {
-    // ignore storage errors (e.g. private browsing)
-  }
-}
-
-function clearAuthHeader() {
-  try {
-    sessionStorage.removeItem(AUTH_STORAGE_KEY);
-  } catch (e) {
-    // ignore
-  }
-}
-
-async function fetchStats(authHeader) {
-  const res = await fetch('/api/admin/stats', {
-    headers: {
-      Authorization: authHeader,
-    },
-  });
-
-  if (res.status === 401) {
-    const err = new Error('Invalid username or password.');
-    err.status = 401;
-    throw err;
-  }
-
-  if (!res.ok) {
-    const err = new Error('Something went wrong loading the dashboard.');
-    err.status = res.status;
-    throw err;
-  }
-
-  return res.json();
+function encodeBasicAuth(username, password) {
+  return `Basic ${btoa(`${username}:${password}`)}`;
 }
 
 function formatNumber(n) {
-  if (n === null || n === undefined) return '0';
+  if (n === null || n === undefined || Number.isNaN(n)) return '0';
   return Number(n).toLocaleString();
 }
 
-function BarChart({ data, keys, colors, labelKey }) {
-  if (!data || data.length === 0) {
-    return <p style={styles.emptyText}>No data yet.</p>;
-  }
-
-  let max = 0;
-  data.forEach((row) => {
-    keys.forEach((k) => {
-      const v = Number(row[k]) || 0;
-      if (v > max) max = v;
-    });
-  });
-  if (max === 0) max = 1;
-
+function BarCompare({ overall, unique }) {
+  const max = Math.max(overall, unique, 1);
   return (
-    <div style={styles.chartWrap}>
-      {data.map((row) => (
-        <div key={row[labelKey]} style={styles.chartRow}>
-          <div style={styles.chartLabel}>{row[labelKey]}</div>
-          <div style={styles.chartBars}>
-            {keys.map((k, i) => {
-              const value = Number(row[k]) || 0;
-              const pct = Math.max((value / max) * 100, value > 0 ? 2 : 0);
-              return (
-                <div key={k} style={styles.chartBarTrack}>
-                  <div
-                    style={{
-                      ...styles.chartBarFill,
-                      width: `${pct}%`,
-                      background: colors[i],
-                    }}
-                    title={`${k}: ${value}`}
-                  />
-                  <span style={styles.chartBarValue}>{formatNumber(value)}</span>
-                </div>
-              );
-            })}
-          </div>
+    <div style={styles.compareRow}>
+      <div style={styles.compareItem}>
+        <div style={styles.statLabel}>Overall Views</div>
+        <div style={{ ...styles.statValue, ...styles.statAccentCoral }}>
+          {formatNumber(overall)}
         </div>
-      ))}
+        <div style={styles.barTrack}>
+          <div
+            style={{
+              width: `${(overall / max) * 100}%`,
+              height: '100%',
+              background: COLORS.coral,
+            }}
+          />
+        </div>
+      </div>
+      <div style={styles.compareItem}>
+        <div style={styles.statLabel}>Unique Device Views</div>
+        <div style={{ ...styles.statValue, ...styles.statAccentGold }}>
+          {formatNumber(unique)}
+        </div>
+        <div style={styles.barTrack}>
+          <div
+            style={{
+              width: `${(unique / max) * 100}%`,
+              height: '100%',
+              background: COLORS.gold,
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatCard({ label, value, accent }) {
+function BreakdownTable({ title, rows, periodLabel }) {
   return (
-    <div style={{ ...styles.statCard, borderTop: `4px solid ${accent}` }}>
-      <div style={styles.statValue}>{formatNumber(value)}</div>
-      <div style={styles.statLabel}>{label}</div>
-    </div>
-  );
-}
-
-function DataTable({ columns, rows }) {
-  if (!rows || rows.length === 0) {
-    return <p style={styles.emptyText}>No data yet.</p>;
-  }
-  return (
-    <div style={styles.tableWrap}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th key={col.key} style={styles.th}>
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, idx) => (
-            <tr key={idx} style={idx % 2 === 0 ? styles.trEven : styles.trOdd}>
-              {columns.map((col) => (
-                <td key={col.key} style={styles.td}>
-                  {row[col.key]}
-                </td>
+    <>
+      <h2 style={styles.sectionTitle}>{title}</h2>
+      <div style={styles.tableWrap}>
+        {rows && rows.length > 0 ? (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>{periodLabel}</th>
+                <th style={styles.th}>Cards Created</th>
+                <th style={styles.th}>Views</th>
+                <th style={styles.th}>Unique Views</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.period}>
+                  <td style={styles.td}>{row.period}</td>
+                  <td style={styles.td}>{formatNumber(row.cardsCreated)}</td>
+                  <td style={styles.td}>{formatNumber(row.views)}</td>
+                  <td style={styles.td}>{formatNumber(row.uniqueViews)}</td>
+                </tr>
               ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+            </tbody>
+          </table>
+        ) : (
+          <div style={styles.emptyState}>No data yet.</div>
+        )}
+      </div>
+    </>
   );
+}
+
+function normalizeBreakdown(list, periodKey) {
+  if (!Array.isArray(list)) return [];
+  return list.map((item) => ({
+    period: item[periodKey] ?? item.period ?? '',
+    cardsCreated: item.cardsCreated ?? item.cards_created ?? 0,
+    views: item.views ?? item.viewCount ?? 0,
+    uniqueViews: item.uniqueViews ?? item.unique_views ?? item.uniqueDeviceViews ?? 0,
+  }));
 }
 
 export default function AdminDashboardPage() {
-  const [authHeader, setAuthHeader] = useState(null);
-  const [checkingStoredAuth, setCheckingStoredAuth] = useState(true);
-
+  const [authHeader, setAuthHeader] = useState(
+    () => sessionStorage.getItem(ADMIN_AUTH_KEY) || null
+  );
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
-  const [loggingIn, setLoggingIn] = useState(false);
 
   const [stats, setStats] = useState(null);
-  const [loadingStats, setLoadingStats] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState('');
 
-  const loadStats = useCallback(async (header) => {
-    setLoadingStats(true);
+  const fetchStats = useCallback(async (header) => {
+    setStatsLoading(true);
     setStatsError('');
     try {
-      const data = await fetchStats(header);
+      const res = await fetch('/api/admin/stats', {
+        method: 'GET',
+        headers: {
+          Authorization: header,
+        },
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        sessionStorage.removeItem(ADMIN_AUTH_KEY);
+        setAuthHeader(null);
+        setStats(null);
+        setLoginError('Session expired. Please log in again.');
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Failed to load dashboard stats (${res.status})`);
+      }
+
+      const data = await res.json();
       setStats(data);
     } catch (err) {
-      if (err.status === 401) {
-        clearAuthHeader();
-        setAuthHeader(null);
-        setLoginError('Session expired. Please log in again.');
-      } else {
-        setStatsError(err.message || 'Failed to load dashboard data.');
-      }
+      setStatsError(err.message || 'Failed to load dashboard stats.');
     } finally {
-      setLoadingStats(false);
+      setStatsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const stored = getStoredAuthHeader();
-    if (stored) {
-      setAuthHeader(stored);
-      loadStats(stored).finally(() => setCheckingStoredAuth(false));
-    } else {
-      setCheckingStoredAuth(false);
+    if (authHeader) {
+      fetchStats(authHeader);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authHeader, fetchStats]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -199,70 +362,68 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    setLoggingIn(true);
-    const header = `Basic ${btoa(`${username}:${password}`)}`;
+    setLoginLoading(true);
+    const header = encodeBasicAuth(username.trim(), password);
 
     try {
-      const data = await fetchStats(header);
-      storeAuthHeader(header);
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {
+          Authorization: header,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        setLoginError('Invalid username or password.');
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Login failed (${res.status})`);
+      }
+
+      sessionStorage.setItem(ADMIN_AUTH_KEY, header);
       setAuthHeader(header);
-      setStats(data);
       setPassword('');
     } catch (err) {
-      if (err.status === 401) {
-        setLoginError('Invalid username or password.');
-      } else {
-        setLoginError(err.message || 'Login failed. Please try again.');
-      }
+      setLoginError(err.message || 'Login failed. Please try again.');
     } finally {
-      setLoggingIn(false);
+      setLoginLoading(false);
     }
   };
 
   const handleLogout = () => {
-    clearAuthHeader();
+    sessionStorage.removeItem(ADMIN_AUTH_KEY);
     setAuthHeader(null);
     setStats(null);
     setUsername('');
     setPassword('');
+    setLoginError('');
+    setStatsError('');
   };
-
-  const handleRefresh = () => {
-    if (authHeader) {
-      loadStats(authHeader);
-    }
-  };
-
-  if (checkingStoredAuth) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.centerBox}>
-          <div style={styles.spinner} />
-          <p style={styles.loadingText}>Checking session...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (!authHeader) {
     return (
       <div style={styles.page}>
-        <div style={styles.loginBox}>
-          <h1 style={styles.loginHeading}>Admin Login</h1>
-          <p style={styles.loginSubtext}>Sign in to view dashboard analytics.</p>
-
-          <form onSubmit={handleLogin} style={styles.form}>
+        <div style={styles.loginWrap}>
+          <div style={styles.logoRow}>
+            <h1 style={styles.title}>Admin Login</h1>
+            <div style={styles.subtitle}>Sign in to view dashboard stats</div>
+          </div>
+          <form onSubmit={handleLogin}>
             <label style={styles.label} htmlFor="admin-username">
               Username
             </label>
             <input
               id="admin-username"
               type="text"
+              autoComplete="username"
+              style={styles.input}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              style={styles.input}
-              autoComplete="username"
-              disabled={loggingIn}
+              disabled={loginLoading}
             />
 
             <label style={styles.label} htmlFor="admin-password">
@@ -271,438 +432,100 @@ export default function AdminDashboardPage() {
             <input
               id="admin-password"
               type="password"
+              autoComplete="current-password"
+              style={styles.input}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={styles.input}
-              autoComplete="current-password"
-              disabled={loggingIn}
+              disabled={loginLoading}
             />
 
-            {loginError && <p style={styles.errorText}>{loginError}</p>}
+            {loginError && <div style={styles.errorText}>{loginError}</div>}
 
-            <button type="submit" style={styles.primaryButton} disabled={loggingIn}>
-              {loggingIn ? 'Signing in...' : 'Sign In'}
+            <button
+              type="submit"
+              style={{
+                ...styles.button,
+                ...(loginLoading ? styles.buttonDisabled : {}),
+              }}
+              disabled={loginLoading}
+            >
+              {loginLoading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
-
-          <Link to="/" style={styles.backLink}>
-            &larr; Back to Create Card
-          </Link>
         </div>
       </div>
     );
   }
 
+  const totalCards = stats?.totalCards ?? 0;
+  const totalViews = stats?.totalViews ?? 0;
+  const totalUniqueViews = stats?.totalUniqueViews ?? stats?.totalUniqueDeviceViews ?? 0;
+  const byDay = normalizeBreakdown(stats?.byDay, 'date');
+  const byWeek = normalizeBreakdown(stats?.byWeek, 'week');
+
   return (
     <div style={styles.page}>
       <div style={styles.dashboardWrap}>
-        <header style={styles.dashboardHeader}>
+        <div style={styles.header}>
           <div>
-            <h1 style={styles.dashboardHeading}>Admin Dashboard</h1>
-            <p style={styles.dashboardSubtext}>Card creation and view analytics</p>
+            <h1 style={styles.title}>Admin Dashboard</h1>
+            <div style={styles.subtitle}>Card creation &amp; view analytics</div>
           </div>
-          <div style={styles.headerActions}>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              style={styles.secondaryButton}
-              disabled={loadingStats}
-            >
-              {loadingStats ? 'Refreshing...' : 'Refresh'}
-            </button>
-            <button type="button" onClick={handleLogout} style={styles.logoutButton}>
-              Log Out
-            </button>
-          </div>
-        </header>
+          <button type="button" style={styles.logoutBtn} onClick={handleLogout}>
+            Log Out
+          </button>
+        </div>
 
-        {statsError && (
-          <div style={styles.errorBanner}>
-            <p style={styles.errorText}>{statsError}</p>
-            <button type="button" onClick={handleRefresh} style={styles.secondaryButton}>
-              Try Again
-            </button>
-          </div>
+        {statsLoading && (
+          <div style={styles.loadingWrap}>Loading dashboard stats...</div>
         )}
 
-        {loadingStats && !stats && (
-          <div style={styles.centerBox}>
-            <div style={styles.spinner} />
-            <p style={styles.loadingText}>Loading dashboard...</p>
-          </div>
+        {!statsLoading && statsError && (
+          <div style={styles.errorText}>{statsError}</div>
         )}
 
-        {stats && (
+        {!statsLoading && !statsError && stats && (
           <>
-            <section style={styles.statsGrid}>
-              <StatCard
-                label="Total Cards Created"
-                value={stats.totalCards}
-                accent={COLORS.coral}
-              />
-              <StatCard
-                label="Total Views (Lifetime)"
-                value={stats.totalViews}
-                accent={COLORS.gold}
-              />
-              <StatCard
-                label="Unique Device Views"
-                value={stats.uniqueDeviceViews}
-                accent={COLORS.plum}
-              />
-            </section>
-
-            <section style={styles.section}>
-              <h2 style={styles.sectionHeading}>Views: Overall vs Unique Devices</h2>
-              <div style={styles.legendRow}>
-                <span style={styles.legendItem}>
-                  <span style={{ ...styles.legendSwatch, background: COLORS.coral }} />
-                  Overall views
-                </span>
-                <span style={styles.legendItem}>
-                  <span style={{ ...styles.legendSwatch, background: COLORS.plum }} />
-                  Unique device views
-                </span>
+            <div style={styles.statsRow}>
+              <div style={styles.statCard}>
+                <div style={styles.statLabel}>Total Cards Created</div>
+                <div style={styles.statValue}>{formatNumber(totalCards)}</div>
               </div>
-              <BarChart
-                data={stats.byDay || []}
-                keys={['views', 'uniqueViews']}
-                colors={[COLORS.coral, COLORS.plum]}
-                labelKey="date"
-              />
-            </section>
+              <div style={styles.statCard}>
+                <div style={styles.statLabel}>Total Views (Lifetime)</div>
+                <div style={{ ...styles.statValue, ...styles.statAccentCoral }}>
+                  {formatNumber(totalViews)}
+                </div>
+              </div>
+              <div style={styles.statCard}>
+                <div style={styles.statLabel}>Unique Device Views</div>
+                <div style={{ ...styles.statValue, ...styles.statAccentGold }}>
+                  {formatNumber(totalUniqueViews)}
+                </div>
+              </div>
+            </div>
 
-            <section style={styles.section}>
-              <h2 style={styles.sectionHeading}>Breakdown by Day</h2>
-              <DataTable
-                columns={[
-                  { key: 'date', label: 'Date' },
-                  { key: 'cards', label: 'Cards Created' },
-                  { key: 'views', label: 'Total Views' },
-                  { key: 'uniqueViews', label: 'Unique Device Views' },
-                ]}
-                rows={(stats.byDay || []).map((row) => ({
-                  date: row.date,
-                  cards: formatNumber(row.cards),
-                  views: formatNumber(row.views),
-                  uniqueViews: formatNumber(row.uniqueViews),
-                }))}
-              />
-            </section>
+            <h2 style={styles.sectionTitle}>Overall vs Unique Device Views</h2>
+            <BarCompare overall={totalViews} unique={totalUniqueViews} />
 
-            <section style={styles.section}>
-              <h2 style={styles.sectionHeading}>Breakdown by Week</h2>
-              <BarChart
-                data={stats.byWeek || []}
-                keys={['views', 'uniqueViews']}
-                colors={[COLORS.coral, COLORS.plum]}
-                labelKey="week"
-              />
-              <DataTable
-                columns={[
-                  { key: 'week', label: 'Week' },
-                  { key: 'cards', label: 'Cards Created' },
-                  { key: 'views', label: 'Total Views' },
-                  { key: 'uniqueViews', label: 'Unique Device Views' },
-                ]}
-                rows={(stats.byWeek || []).map((row) => ({
-                  week: row.week,
-                  cards: formatNumber(row.cards),
-                  views: formatNumber(row.views),
-                  uniqueViews: formatNumber(row.uniqueViews),
-                }))}
-              />
-            </section>
+            <BreakdownTable
+              title="Breakdown by Day"
+              rows={byDay}
+              periodLabel="Date"
+            />
+
+            <BreakdownTable
+              title="Breakdown by Week"
+              rows={byWeek}
+              periodLabel="Week"
+            />
           </>
         )}
+
+        <Link to="/" style={styles.footerLink}>
+          &larr; Back to Create Card
+        </Link>
       </div>
     </div>
   );
-}
-
-const styles = {
-  page: {
-    minHeight: '100vh',
-    background: COLORS.cream,
-    fontFamily: "'Poppins', system-ui, -apple-system, sans-serif",
-    color: COLORS.plum,
-    padding: '24px 16px',
-    boxSizing: 'border-box',
-  },
-  centerBox: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '40vh',
-    gap: '12px',
-  },
-  spinner: {
-    width: '36px',
-    height: '36px',
-    border: `4px solid ${COLORS.gold}`,
-    borderTopColor: COLORS.coral,
-    borderRadius: '50%',
-    animation: 'admin-spin 0.8s linear infinite',
-  },
-  loadingText: {
-    color: COLORS.plum,
-    fontSize: '14px',
-  },
-  loginBox: {
-    maxWidth: '380px',
-    margin: '10vh auto 0',
-    background: '#FFFFFF',
-    borderRadius: '16px',
-    padding: '32px 28px',
-    boxShadow: '0 8px 24px rgba(46,31,59,0.12)',
-  },
-  loginHeading: {
-    margin: 0,
-    fontSize: '24px',
-    fontWeight: 700,
-    color: COLORS.plum,
-  },
-  loginSubtext: {
-    marginTop: '6px',
-    marginBottom: '20px',
-    fontSize: '14px',
-    color: '#6B5C74',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '6px',
-  },
-  label: {
-    fontSize: '13px',
-    fontWeight: 600,
-    color: COLORS.plum,
-    marginTop: '10px',
-  },
-  input: {
-    padding: '10px 12px',
-    borderRadius: '10px',
-    border: '1px solid #E5D9E8',
-    fontSize: '15px',
-    outline: 'none',
-    background: COLORS.cream,
-    color: COLORS.plum,
-  },
-  primaryButton: {
-    marginTop: '20px',
-    padding: '12px 16px',
-    borderRadius: '999px',
-    border: 'none',
-    background: COLORS.coral,
-    color: '#FFFFFF',
-    fontWeight: 700,
-    fontSize: '15px',
-    cursor: 'pointer',
-  },
-  secondaryButton: {
-    padding: '8px 14px',
-    borderRadius: '999px',
-    border: `1px solid ${COLORS.plum}`,
-    background: 'transparent',
-    color: COLORS.plum,
-    fontWeight: 600,
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  logoutButton: {
-    padding: '8px 14px',
-    borderRadius: '999px',
-    border: 'none',
-    background: COLORS.plum,
-    color: '#FFFFFF',
-    fontWeight: 600,
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  errorText: {
-    color: COLORS.errorRed,
-    fontSize: '13px',
-    margin: '8px 0 0',
-  },
-  errorBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '12px',
-    background: '#FFF1EC',
-    border: `1px solid ${COLORS.errorRed}`,
-    borderRadius: '10px',
-    padding: '10px 14px',
-    marginBottom: '20px',
-  },
-  backLink: {
-    display: 'inline-block',
-    marginTop: '18px',
-    fontSize: '13px',
-    color: COLORS.coral,
-    textDecoration: 'none',
-    fontWeight: 600,
-  },
-  dashboardWrap: {
-    maxWidth: '960px',
-    margin: '0 auto',
-  },
-  dashboardHeader: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '12px',
-    marginBottom: '24px',
-  },
-  dashboardHeading: {
-    margin: 0,
-    fontSize: '26px',
-    fontWeight: 700,
-  },
-  dashboardSubtext: {
-    margin: '4px 0 0',
-    fontSize: '14px',
-    color: '#6B5C74',
-  },
-  headerActions: {
-    display: 'flex',
-    gap: '10px',
-  },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '16px',
-    marginBottom: '28px',
-  },
-  statCard: {
-    background: '#FFFFFF',
-    borderRadius: '14px',
-    padding: '18px 16px',
-    boxShadow: '0 4px 14px rgba(46,31,59,0.08)',
-  },
-  statValue: {
-    fontSize: '30px',
-    fontWeight: 700,
-    color: COLORS.plum,
-  },
-  statLabel: {
-    fontSize: '13px',
-    color: '#6B5C74',
-    marginTop: '4px',
-  },
-  section: {
-    background: '#FFFFFF',
-    borderRadius: '14px',
-    padding: '18px 20px',
-    marginBottom: '22px',
-    boxShadow: '0 4px 14px rgba(46,31,59,0.06)',
-  },
-  sectionHeading: {
-    margin: '0 0 12px',
-    fontSize: '17px',
-    fontWeight: 700,
-    color: COLORS.plum,
-  },
-  legendRow: {
-    display: 'flex',
-    gap: '18px',
-    marginBottom: '14px',
-    fontSize: '13px',
-    color: '#6B5C74',
-  },
-  legendItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-  },
-  legendSwatch: {
-    width: '10px',
-    height: '10px',
-    borderRadius: '3px',
-    display: 'inline-block',
-  },
-  emptyText: {
-    fontSize: '13px',
-    color: '#8A7B92',
-  },
-  chartWrap: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px',
-    maxHeight: '360px',
-    overflowY: 'auto',
-    paddingRight: '4px',
-  },
-  chartRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-  },
-  chartLabel: {
-    width: '90px',
-    flexShrink: 0,
-    fontSize: '12px',
-    color: '#6B5C74',
-  },
-  chartBars: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  chartBarTrack: {
-    position: 'relative',
-    background: '#F3ECE0',
-    borderRadius: '6px',
-    height: '16px',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  chartBarFill: {
-    height: '100%',
-    borderRadius: '6px',
-    minWidth: '2px',
-  },
-  chartBarValue: {
-    marginLeft: '8px',
-    fontSize: '11px',
-    color: COLORS.plum,
-    whiteSpace: 'nowrap',
-  },
-  tableWrap: {
-    overflowX: 'auto',
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: '13px',
-  },
-  th: {
-    textAlign: 'left',
-    padding: '8px 10px',
-    borderBottom: `2px solid ${COLORS.gold}`,
-    color: COLORS.plum,
-    fontWeight: 700,
-  },
-  td: {
-    padding: '8px 10px',
-    color: '#3F3346',
-  },
-  trEven: {
-    background: '#FFFBF5',
-  },
-  trOdd: {
-    background: '#FFFFFF',
-  },
-};
-
-const styleSheet = typeof document !== 'undefined' ? document.createElement('style') : null;
-if (styleSheet) {
-  styleSheet.innerHTML = `@keyframes admin-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
-  if (!document.getElementById('admin-dashboard-spin-keyframes')) {
-    styleSheet.id = 'admin-dashboard-spin-keyframes';
-    document.head.appendChild(styleSheet);
-  }
 }
