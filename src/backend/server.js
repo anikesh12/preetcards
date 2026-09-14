@@ -1,88 +1,94 @@
 require('dotenv').config();
 
-const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
 
 const cardsRouter = require('./routes/cards');
 const adminRouter = require('./routes/admin');
 
-const PORT = process.env.PORT || 3001;
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-
-// Fail fast if ADMIN_PASSWORD is not set in production — the admin routes
-// must never run with an undefined/blank password in a live environment.
-if (NODE_ENV === 'production' && !ADMIN_PASSWORD) {
-  console.error(
-    '[FATAL] ADMIN_PASSWORD environment variable is not set. ' +
-      'Refusing to start in production without an admin password. ' +
-      'Set ADMIN_PASSWORD in your environment and restart the server.'
-  );
-  process.exit(1);
-}
-
-if (!ADMIN_PASSWORD) {
-  console.warn(
-    '[WARN] ADMIN_PASSWORD is not set. Admin routes will be inaccessible ' +
-      'until this is configured. This is only acceptable outside production.'
-  );
-}
-
 const app = express();
+const PORT = process.env.PORT || 3001;
 
-app.use(express.json());
-
-// Uploaded images (served from disk)
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
+
+// Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
+
+// ---- Core body/cookie parsing ----
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser(process.env.COOKIE_SECRET || 'dev-cookie-secret'));
+
+// ---- Session middleware (needed for admin auth) ----
+const isProduction = process.env.NODE_ENV === 'production';
+
+app.use(
+  session({
+    name: 'bwc.sid',
+    secret: process.env.SESSION_SECRET || 'dev-session-secret-change-me',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 1000 * 60 * 60 * 8, // 8 hours
+    },
+  })
+);
+
+// ---- Static assets ----
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// API routes
+// ---- API routes ----
 app.use('/api/cards', cardsRouter);
 app.use('/api/admin', adminRouter);
 
-// Simple health check
+// ---- Health check ----
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Serve the built frontend (React SPA), including the /admin route which
-// resolves client-side via react-router.
-const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
-
+// ---- Serve frontend build ----
 if (fs.existsSync(FRONTEND_DIST)) {
   app.use(express.static(FRONTEND_DIST));
 
-  // Any non-API GET request falls through to index.html so client-side
-  // routes (e.g. /admin, /:cardId) resolve correctly.
-  app.get(/^\/(?!api\/|uploads\/).*/, (req, res) => {
+  // SPA fallback: serve index.html for any non-API route
+  // (covers card view routes, /admin, and any other client-side routes)
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
+      return next();
+    }
     res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
   });
 } else {
   console.warn(
-    `[WARN] Frontend build not found at ${FRONTEND_DIST}. ` +
-      'Run the frontend build before starting in production.'
+    'Frontend build not found at',
+    FRONTEND_DIST,
+    '- run `npm run build` in /frontend before starting in production.'
   );
 }
 
-// Fallback 404 handler for unmatched API routes
+// ---- 404 handler for unmatched API routes ----
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Generic error handler
+// ---- Error handler ----
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-  });
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT} (${NODE_ENV})`);
+  console.log(`Server listening on port ${PORT}`);
 });
 
 module.exports = app;
