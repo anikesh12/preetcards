@@ -1,12 +1,88 @@
-const db = require('../db');
+const crypto = require('crypto');
+const geoip = require('geoip-lite');
+const { UAParser } = require('ua-parser-js');
+const { db } = require('../db');
+
+const DEVICE_COOKIE = 'bwc_device_id';
+const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year, in seconds
+
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  header.split(';').forEach((pair) => {
+    const idx = pair.indexOf('=');
+    if (idx === -1) return;
+    const key = pair.slice(0, idx).trim();
+    const value = pair.slice(idx + 1).trim();
+    if (key) out[key] = decodeURIComponent(value);
+  });
+  return out;
+}
+
+/**
+ * Assigns every visitor a random, non-identifying device ID in a first-party
+ * cookie (set once, reused on return visits) so repeat traffic from the same
+ * browser can be recognized for view-counting and abuse detection -- without
+ * ever knowing who the visitor actually is.
+ */
+function ensureDeviceId(req, res, next) {
+  const cookies = parseCookies(req.headers.cookie);
+  let deviceId = cookies[DEVICE_COOKIE];
+  if (!deviceId) {
+    deviceId = crypto.randomUUID();
+    res.setHeader(
+      'Set-Cookie',
+      `${DEVICE_COOKIE}=${deviceId}; Max-Age=${DEVICE_COOKIE_MAX_AGE}; Path=/; HttpOnly; SameSite=Lax`
+    );
+  }
+  req.deviceId = deviceId;
+  next();
+}
+
+/**
+ * Logs one analytics event (a card view or a card creation). Never throws --
+ * a logging failure should never break the actual request it's attached to.
+ */
+function logEvent(req, eventType, cardSlug = null) {
+  try {
+    const ip = (req.ip || req.socket.remoteAddress || '').replace('::ffff:', '');
+    const geo = geoip.lookup(ip);
+    const ua = new UAParser(req.headers['user-agent']).getResult();
+
+    db.prepare(
+      `INSERT INTO events
+         (event_type, card_slug, device_id, ip_address, city, country, browser, os, device_type, referer)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      eventType,
+      cardSlug,
+      req.deviceId || null,
+      ip || null,
+      geo?.city || null,
+      geo?.country || null,
+      ua.browser.name || null,
+      ua.os.name || null,
+      ua.device.type || 'desktop',
+      req.headers.referer || null
+    );
+  } catch (err) {
+    console.error('Failed to log analytics event:', err);
+  }
+}
+
+/** Overall (every hit) and unique-device view counts for a single card. */
+function getCardViewStats(cardSlug) {
+  const overall = db
+    .prepare(`SELECT COUNT(*) AS count FROM events WHERE event_type = 'view' AND card_slug = ?`)
+    .get(cardSlug);
+  const unique = db
+    .prepare(`SELECT COUNT(DISTINCT device_id) AS count FROM events WHERE event_type = 'view' AND card_slug = ?`)
+    .get(cardSlug);
+  return { overallViews: overall.count, uniqueViews: unique.count };
+}
 
 const VALID_GRANULARITIES = ['day', 'week'];
 
-/**
- * Normalizes and validates a granularity value.
- * @param {string} granularity
- * @returns {'day'|'week'}
- */
 function normalizeGranularity(granularity) {
   const g = (granularity || 'day').toLowerCase();
   if (!VALID_GRANULARITIES.includes(g)) {
@@ -20,9 +96,6 @@ function normalizeGranularity(granularity) {
  * week bucket. Week buckets are aligned to Monday and represented by the
  * ISO date (YYYY-MM-DD) of that Monday, so buckets sort chronologically
  * as plain strings.
- * @param {string} column - column name or SQL expression holding a timestamp
- * @param {'day'|'week'} granularity
- * @returns {string} SQL expression
  */
 function buildBucketExpr(column, granularity) {
   if (granularity === 'week') {
@@ -34,62 +107,16 @@ function buildBucketExpr(column, granularity) {
 }
 
 /**
- * Builds a WHERE clause fragment (without leading AND) and param list
- * for filtering rows by an optional start/end date range on a column.
- * @param {string} column
- * @param {{ startDate?: string, endDate?: string }} range
- * @returns {{ clause: string, params: any[] }}
- */
-function buildDateRangeClause(column, { startDate, endDate } = {}) {
-  const clauses = [];
-  const params = [];
-
-  if (startDate) {
-    clauses.push(`date(${column}) >= date(?)`);
-    params.push(startDate);
-  }
-  if (endDate) {
-    clauses.push(`date(${column}) <= date(?)`);
-    params.push(endDate);
-  }
-
-  return {
-    clause: clauses.length ? clauses.join(' AND ') : '',
-    params,
-  };
-}
-
-/**
- * Returns view statistics grouped into daily or weekly buckets, including
- * both total (overall) views and unique-device views per bucket.
- *
- * If cardId is provided, stats are scoped to that card only. If omitted,
- * stats are aggregated across all cards (useful for admin overview).
+ * Site-wide view stats grouped into daily or weekly buckets (every card
+ * combined) -- used by the admin dashboard's breakdown table.
  *
  * @param {Object} [options]
- * @param {string} [options.cardId] - restrict stats to a single card
  * @param {'day'|'week'} [options.granularity='day']
- * @param {string} [options.startDate] - ISO date (inclusive)
- * @param {string} [options.endDate] - ISO date (inclusive)
  * @returns {Array<{ bucket: string, totalViews: number, uniqueViews: number }>}
  */
-function getCardViewStats({ cardId, granularity = 'day', startDate, endDate } = {}) {
+function getViewStatsBucketed({ granularity = 'day' } = {}) {
   const g = normalizeGranularity(granularity);
   const bucketExpr = buildBucketExpr('created_at', g);
-
-  const whereParts = [`event_type = 'view'`];
-  const params = [];
-
-  if (cardId) {
-    whereParts.push('card_id = ?');
-    params.push(cardId);
-  }
-
-  const { clause: dateClause, params: dateParams } = buildDateRangeClause('created_at', { startDate, endDate });
-  if (dateClause) {
-    whereParts.push(dateClause);
-    params.push(...dateParams);
-  }
 
   const sql = `
     SELECT
@@ -97,124 +124,41 @@ function getCardViewStats({ cardId, granularity = 'day', startDate, endDate } = 
       COUNT(*) AS totalViews,
       COUNT(DISTINCT device_id) AS uniqueViews
     FROM events
-    WHERE ${whereParts.join(' AND ')}
+    WHERE event_type = 'view'
     GROUP BY bucket
     ORDER BY bucket ASC
   `;
 
-  const rows = db.prepare(sql).all(...params);
-
-  return rows.map((row) => ({
+  return db.prepare(sql).all().map((row) => ({
     bucket: row.bucket,
     totalViews: row.totalViews,
     uniqueViews: row.uniqueViews,
   }));
 }
 
-/**
- * Returns per-card view statistics for a single card, an alias of
- * getCardViewStats scoped to one card. Kept for readability/backwards
- * compatibility at call sites that always operate on a single card.
- *
- * @param {string} cardId
- * @param {Object} [options]
- * @param {'day'|'week'} [options.granularity='day']
- * @param {string} [options.startDate]
- * @param {string} [options.endDate]
- * @returns {Array<{ bucket: string, totalViews: number, uniqueViews: number }>}
- */
-function getCardViewStatsForCard(cardId, options = {}) {
-  if (!cardId) {
-    throw new Error('cardId is required');
-  }
-  return getCardViewStats({ ...options, cardId });
+/** Site-wide total and unique-device view counts, across every card. */
+function getOverallViewSummary() {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS totalViews, COUNT(DISTINCT device_id) AS uniqueViews
+       FROM events WHERE event_type = 'view'`
+    )
+    .get();
+  return { totalViews: row?.totalViews || 0, uniqueViews: row?.uniqueViews || 0 };
 }
 
-/**
- * Returns the total and unique-device view counts for a single card,
- * collapsed across the whole time range (no bucketing).
- *
- * @param {string} cardId
- * @param {Object} [options]
- * @param {string} [options.startDate]
- * @param {string} [options.endDate]
- * @returns {{ totalViews: number, uniqueViews: number }}
- */
-function getCardViewSummary(cardId, { startDate, endDate } = {}) {
-  if (!cardId) {
-    throw new Error('cardId is required');
-  }
-
-  const whereParts = [`event_type = 'view'`, 'card_id = ?'];
-  const params = [cardId];
-
-  const { clause: dateClause, params: dateParams } = buildDateRangeClause('created_at', { startDate, endDate });
-  if (dateClause) {
-    whereParts.push(dateClause);
-    params.push(...dateParams);
-  }
-
-  const sql = `
-    SELECT
-      COUNT(*) AS totalViews,
-      COUNT(DISTINCT device_id) AS uniqueViews
-    FROM events
-    WHERE ${whereParts.join(' AND ')}
-  `;
-
-  const row = db.prepare(sql).get(...params);
-
-  return {
-    totalViews: row?.totalViews || 0,
-    uniqueViews: row?.uniqueViews || 0,
-  };
-}
-
-/**
- * Returns the number of cards created per day or week bucket.
- *
- * @param {Object} [options]
- * @param {'day'|'week'} [options.granularity='day']
- * @param {string} [options.startDate] - ISO date (inclusive)
- * @param {string} [options.endDate] - ISO date (inclusive)
- * @returns {Array<{ bucket: string, cardsCreated: number }>}
- */
-function getCardCreationStats({ granularity = 'day', startDate, endDate } = {}) {
-  const g = normalizeGranularity(granularity);
-  const bucketExpr = buildBucketExpr('created_at', g);
-
-  const whereParts = [];
-  const params = [];
-
-  const { clause: dateClause, params: dateParams } = buildDateRangeClause('created_at', { startDate, endDate });
-  if (dateClause) {
-    whereParts.push(dateClause);
-    params.push(...dateParams);
-  }
-
-  const whereSql = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
-
-  const sql = `
-    SELECT
-      ${bucketExpr} AS bucket,
-      COUNT(*) AS cardsCreated
-    FROM cards
-    ${whereSql}
-    GROUP BY bucket
-    ORDER BY bucket ASC
-  `;
-
-  const rows = db.prepare(sql).all(...params);
-
-  return rows.map((row) => ({
-    bucket: row.bucket,
-    cardsCreated: row.cardsCreated,
-  }));
+/** Total number of cards ever created. */
+function getTotalCardCount() {
+  const row = db.prepare(`SELECT COUNT(*) AS count FROM cards`).get();
+  return row?.count || 0;
 }
 
 module.exports = {
+  DEVICE_COOKIE,
+  ensureDeviceId,
+  logEvent,
   getCardViewStats,
-  getCardViewStatsForCard,
-  getCardViewSummary,
-  getCardCreationStats,
+  getViewStatsBucketed,
+  getOverallViewSummary,
+  getTotalCardCount,
 };

@@ -4,61 +4,25 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const session = require('express-session');
 
 const cardsRouter = require('./routes/cards');
 const adminRouter = require('./routes/admin');
+const { ensureDeviceId } = require('./utils/analytics');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
 
-// --- Secrets validation -----------------------------------------------
-// Never allow known/hardcoded secrets to silently protect sessions or
-// signed cookies in production. Fail fast instead.
-const DEV_ONLY_SESSION_SECRET = 'dev-session-secret-change-me';
-const DEV_ONLY_COOKIE_SECRET = 'dev-cookie-secret';
-
-let SESSION_SECRET = process.env.SESSION_SECRET;
-let COOKIE_SECRET = process.env.COOKIE_SECRET;
-
-if (!SESSION_SECRET || !COOKIE_SECRET) {
-  if (isProduction) {
-    console.error(
-      'FATAL: SESSION_SECRET and COOKIE_SECRET environment variables must ' +
-        'be set in production. Refusing to start with insecure defaults.'
-    );
-    process.exit(1);
-  } else {
-    console.warn(
-      'WARNING: SESSION_SECRET and/or COOKIE_SECRET not set. Falling back ' +
-        'to insecure development-only defaults. Do NOT use this in production.'
-    );
-    SESSION_SECRET = SESSION_SECRET || DEV_ONLY_SESSION_SECRET;
-    COOKIE_SECRET = COOKIE_SECRET || DEV_ONLY_COOKIE_SECRET;
-  }
-}
+// Admin session signing (ADMIN_PASSWORD/SESSION_SECRET) is validated with a
+// fail-closed check inside routes/admin.js itself -- no need to duplicate
+// that check here.
 
 // --- Core middleware -----------------------------------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser(COOKIE_SECRET));
-
-app.use(
-  session({
-    name: 'sid',
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isProduction,
-      maxAge: 1000 * 60 * 60 * 8, // 8 hours
-    },
-  })
-);
+app.use(cookieParser());
+app.use(ensureDeviceId);
 
 // --- Static assets ---------------------------------------------------------
 const uploadsDir = path.join(__dirname, 'uploads');

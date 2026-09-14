@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const analytics = require('../analytics');
+const analytics = require('../utils/analytics');
 
 const router = express.Router();
 
@@ -177,22 +177,25 @@ router.post('/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// GET /api/admin/stats
+// GET /api/admin/stats?range=daily|weekly
 router.get('/stats', adminAuth, (req, res) => {
   try {
+    const range = req.query.range === 'weekly' ? 'weekly' : 'daily';
+    const granularity = range === 'weekly' ? 'week' : 'day';
+
     const totalCards = analytics.getTotalCardCount();
-    const totalViews = analytics.getTotalViewStats(); // { overall, unique }
-    const dailyViews = analytics.getDailyViewStats(30); // last 30 days
-    const weeklyViews = analytics.getWeeklyViewStats(12); // last 12 weeks
+    const { totalViews, uniqueViews } = analytics.getOverallViewSummary();
+    const bucketed = analytics.getViewStatsBucketed({ granularity });
 
     res.json({
       totalCards,
-      views: {
-        overall: totalViews.overall,
-        unique: totalViews.unique,
-        daily: dailyViews,
-        weekly: weeklyViews,
-      },
+      totalViews,
+      uniqueViews,
+      breakdown: bucketed.map((row) => ({
+        period: row.bucket,
+        views: row.totalViews,
+        uniqueViews: row.uniqueViews,
+      })),
     });
   } catch (err) {
     console.error('Failed to load admin stats:', err);
