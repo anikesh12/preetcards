@@ -11,84 +11,109 @@ const adminRouter = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const isProduction = NODE_ENV === 'production';
 
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
-const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
+// --- Secrets validation -----------------------------------------------
+// Never allow known/hardcoded secrets to silently protect sessions or
+// signed cookies in production. Fail fast instead.
+const DEV_ONLY_SESSION_SECRET = 'dev-session-secret-change-me';
+const DEV_ONLY_COOKIE_SECRET = 'dev-cookie-secret';
 
-// Ensure uploads directory exists
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+let SESSION_SECRET = process.env.SESSION_SECRET;
+let COOKIE_SECRET = process.env.COOKIE_SECRET;
+
+if (!SESSION_SECRET || !COOKIE_SECRET) {
+  if (isProduction) {
+    console.error(
+      'FATAL: SESSION_SECRET and COOKIE_SECRET environment variables must ' +
+        'be set in production. Refusing to start with insecure defaults.'
+    );
+    process.exit(1);
+  } else {
+    console.warn(
+      'WARNING: SESSION_SECRET and/or COOKIE_SECRET not set. Falling back ' +
+        'to insecure development-only defaults. Do NOT use this in production.'
+    );
+    SESSION_SECRET = SESSION_SECRET || DEV_ONLY_SESSION_SECRET;
+    COOKIE_SECRET = COOKIE_SECRET || DEV_ONLY_COOKIE_SECRET;
+  }
 }
 
-// ---- Core body/cookie parsing ----
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(cookieParser(process.env.COOKIE_SECRET || 'dev-cookie-secret'));
-
-// ---- Session middleware (needed for admin auth) ----
-const isProduction = process.env.NODE_ENV === 'production';
+// --- Core middleware -----------------------------------------------------
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser(COOKIE_SECRET));
 
 app.use(
   session({
-    name: 'bwc.sid',
-    secret: process.env.SESSION_SECRET || 'dev-session-secret-change-me',
+    name: 'sid',
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: isProduction,
       sameSite: 'lax',
+      secure: isProduction,
       maxAge: 1000 * 60 * 60 * 8, // 8 hours
     },
   })
 );
 
-// ---- Static assets ----
-app.use('/uploads', express.static(UPLOADS_DIR));
+// --- Static assets ---------------------------------------------------------
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
 
-// ---- API routes ----
+// --- API routes -------------------------------------------------------------
 app.use('/api/cards', cardsRouter);
 app.use('/api/admin', adminRouter);
 
-// ---- Health check ----
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// ---- Serve frontend build ----
-if (fs.existsSync(FRONTEND_DIST)) {
-  app.use(express.static(FRONTEND_DIST));
+// --- Frontend (SPA) -----------------------------------------------------
+const frontendDistDir = path.join(__dirname, '..', 'frontend', 'dist');
 
-  // SPA fallback: serve index.html for any non-API route
-  // (covers card view routes, /admin, and any other client-side routes)
+if (fs.existsSync(frontendDistDir)) {
+  app.use(express.static(frontendDistDir));
+
+  // SPA fallback: serve index.html for any non-API, non-uploads route
+  // (covers client-side routes such as /admin, /:cardId, etc.)
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
+    if (
+      req.path.startsWith('/api/') ||
+      req.path.startsWith('/uploads/')
+    ) {
       return next();
     }
-    res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+    res.sendFile(path.join(frontendDistDir, 'index.html'));
   });
 } else {
   console.warn(
-    'Frontend build not found at',
-    FRONTEND_DIST,
-    '- run `npm run build` in /frontend before starting in production.'
+    `Frontend build not found at ${frontendDistDir}. Run the frontend ` +
+      'build before starting the server in production.'
   );
 }
 
-// ---- 404 handler for unmatched API routes ----
-app.use('/api', (req, res) => {
+// --- Error handling -----------------------------------------------------
+app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// ---- Error handler ----
 app.use((err, req, res, next) => {
   console.error(err);
   const status = err.status || 500;
-  res.status(status).json({ error: err.message || 'Internal server error' });
+  res.status(status).json({
+    error: isProduction ? 'Internal server error' : err.message,
+  });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server listening on port ${PORT} (${NODE_ENV})`);
 });
 
 module.exports = app;
