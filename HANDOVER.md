@@ -122,3 +122,20 @@ Every file above passed an individual execution check, a QA spec review, and a s
 - CR13 Change request: frontend/src/main.jsx -> frontend/src/main.jsx [done]
 - CR14 Change request: frontend/src/api/client.js -> frontend/src/api/client.js [failed]
 - CR15 Change request: frontend/src/styles/admin.css -> frontend/src/styles/admin.css [done]
+
+
+## Revision — Please add a password-protected admin dashboard at /admin fo
+
+**Client request:** Please add a password-protected admin dashboard at /admin for this v2 release (must ship before launch, not deferred). Access should be gated by a single shared credential read from an ADMIN_PASSWORD env var, via either a basic login form or HTTP Basic Auth — no multi-user accounts needed, since this is just for the site owner and Manpreet (non-technical co-owner) to check stats from any browser without SSH access. The dashboard should display total cards created and total card views, each broken down by day and by week (not just lifetime totals), plus a split between overall views and unique-device views. Backend work should extend the existing getCardViewStats/events table logic in backend/utils/analytics.js to support date-range grouping (daily/weekly) rather than duplicating that logic elsewhere. Please scope and sequence this alongside the other v2 items.
+
+**Changes made:**
+- CR7 Change request: backend/utils/analytics.js -> backend/utils/analytics.js [done]
+- CR8 Change request: backend/middleware/adminAuth.js -> backend/middleware/adminAuth.js [done]
+- CR9 Change request: backend/routes/admin.js -> backend/routes/admin.js [done]
+- CR10 Change request: backend/server.js -> backend/server.js [done]
+- CR11 Change request: backend/.env.example -> backend/.env.example [done]
+- CR12 Change request: frontend/src/pages/AdminLoginPage.jsx -> frontend/src/pages/AdminLoginPage.jsx [done]
+- CR13 Change request: frontend/src/pages/AdminDashboardPage.jsx -> frontend/src/pages/AdminDashboardPage.jsx [done]
+- CR14 Change request: frontend/src/api/adminClient.js -> frontend/src/api/adminClient.js [done]
+- CR15 Change request: frontend/src/main.jsx -> frontend/src/main.jsx [done]
+- CR16 Change request: frontend/src/styles/admin.css -> frontend/src/styles/admin.css [done]
