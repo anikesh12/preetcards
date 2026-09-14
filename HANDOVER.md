@@ -106,3 +106,19 @@ Every file above passed an individual execution check, a QA spec review, and a s
 - CR4 Change request: backend/utils/imageProcessing.js -> backend/utils/imageProcessing.js [done]
 - CR5 Change request: frontend/src/main.jsx -> frontend/src/main.jsx [done]
 - CR6 Change request: frontend/src/pages/CreateCardPage.jsx -> frontend/src/pages/CreateCardPage.jsx [done]
+
+
+## Revision — Add a password-protected admin dashboard at /admin, accessib
+
+**Client request:** Add a password-protected admin dashboard at /admin, accessible from any browser without server/SSH access, for the site owner and co-owner Manpreet to monitor usage. It must display total cards created and total card views, each broken down by day and by week (not just lifetime totals), plus overall view counts versus unique-device view counts. Implement this by extending the existing getCardViewStats/events-table logic in backend/utils/analytics.js with date-range grouping (daily and weekly) rather than duplicating that logic elsewhere. Access should be gated by a single shared admin credential read from an ADMIN_PASSWORD environment variable, enforced via either a basic login form or HTTP Basic Auth -- a full user-account/auth system is not required. This is a required v2 launch item, not a v3 deferral, and should be scoped and built as part of the current release.
+
+**Changes made:**
+- CR7 Change request: backend/utils/analytics.js -> backend/utils/analytics.js [done]
+- CR8 Change request: backend/middleware/adminAuth.js -> backend/middleware/adminAuth.js [done]
+- CR9 Change request: backend/routes/admin.js -> backend/routes/admin.js [done]
+- CR10 Change request: backend/server.js -> backend/server.js [done]
+- CR11 Change request: backend/.env.example -> backend/.env.example [done]
+- CR12 Change request: frontend/src/pages/AdminDashboardPage.jsx -> frontend/src/pages/AdminDashboardPage.jsx [failed]
+- CR13 Change request: frontend/src/main.jsx -> frontend/src/main.jsx [done]
+- CR14 Change request: frontend/src/api/client.js -> frontend/src/api/client.js [failed]
+- CR15 Change request: frontend/src/styles/admin.css -> frontend/src/styles/admin.css [done]
