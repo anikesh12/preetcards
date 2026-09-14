@@ -1,61 +1,66 @@
-# Integration Report — Birthday Wishes Card
+# Integration Report — birthday-wishes-card
 
-## 1. Consistency Overview
+## 1. Overall Consistency
 
-The project is a coherent monorepo (`/frontend` + `/backend`) and the high-level architecture (Vite React SPA + Express API + SQLite + local disk uploads via sharp) is followed consistently across the files reviewed. Design tokens, routing, and the single-server production deployment model all line up with the stated architecture. However, there are **several duplicated/competing implementations of the same responsibility** that suggest the backend was built in overlapping passes and never fully consolidated:
+The React/Vite frontend and Express/SQLite backend follow a coherent shape (routes → controllers → SQLite, Vite proxy for `/api` and `/uploads`, single monorepo with root `dev`/`build`/`start` scripts). However, several pieces have **drifted from each other** and at least one is actively broken (matches the failed boot check).
 
-- **Card creation + upload handling is implemented three times**, each independently:
-  - `backend/server.js` — inline `generateId()`, its own `multer` instance, own sharp resize logic.
-  - `backend/routes/cards.js` — separate `multer` instance, uses `nanoid` for IDs, own resize logic.
-  - `backend/middleware/upload.js` — a third `multer` config (temp-storage + magic-byte verification pattern).
-  - `backend/utils/imageProcessing.js` and `backend/utils/slug.js` — a fourth/fifth set of "canonical" helpers for the same job.
+| Area | Status | Notes |
+|---|---|---|
+| Frontend routing (`main.jsx`) ↔ pages | ✅ Consistent | `/`, `/admin`, `/card/:id`, `*` all map to files that exist. |
+| `frontend/src/api/client.js` ↔ `backend/routes/cards.js` | ✅ Consistent | `POST /cards`, `GET /cards/:id` match router handlers. |
+| Vite proxy config ↔ backend port | ✅ Consistent | Proxies `/api` and `/uploads` to `localhost:3001`, matching `PORT` default in `.env.example`. |
+| **Database layer** | ⚠️ Inconsistent | `db.js` uses `node:sqlite`'s `DatabaseSync`, but project docs/architecture notes state **better-sqlite3**. Only one of these is likely actually installed — check `backend/package.json`. Also, `node:sqlite` is not available/stable on Node 18, which conflicts with `engines.node >= "18"` in the root `package.json`. |
+| **DB import pattern** | 🔴 Bug | `backend/routes/cards.js` does `const { db } = require('../db')` (correct — destructures the sqlite instance), but `backend/utils/analytics.js` does `const db = require('../db')` (no destructure) — this binds `db` to the whole module object (`{ TABLE, COLUMNS, COLUMN_LIST, db }`), not the database handle. Any `db.prepare(...)` call in `analytics.js` will throw `db.prepare is not a function` at runtime. |
+| **Admin session logic** | ⚠️ Duplicated/conflicting | Both `backend/middleware/adminAuth.js` and `backend/routes/admin.js` independently implement admin session cookies named `admin_session`, but with **different TTLs** (12h vs 24h) and separate in-memory session stores. It's unclear which is actually wired into `server.js` (only `adminRouter` is imported there) — `adminAuth.js` looks like dead/legacy code that should be deleted or reconciled. |
+| **Admin auth model (frontend vs backend)** | ⚠️ Possible mismatch | `api/client.js` explicitly documents a **cookie-based** session flow ("never store password or Basic Auth token client-side... HttpOnly Secure cookie"). But `AdminDashboardPage.jsx` defines `const ADMIN_AUTH_KEY = 'adminAuthHeader'`, implying an **Authorization header stored in localStorage**. Confirm which auth strategy is actually implemented end-to-end — right now the naming suggests two different design intents were mixed. |
 
-  It's not verifiable from what's shown whether `server.js` actually mounts `routes/cards.js`, or whether it duplicates that logic inline instead. If both are active, you'll get double route registration or dead code; if only `server.js`'s inline version is wired up, then `routes/cards.js`, `middleware/upload.js`, `utils/slug.js`, and `utils/imageProcessing.js` may be **unused dead files** that look load-bearing but aren't. This needs to be resolved to one code path before shipping.
+## 2. Missing / Broken Wiring
 
-- **ID generation is inconsistent**: `server.js` (custom alphabet `generateId`), `routes/cards.js` (`nanoid`), and `utils/slug.js` (its own crypto-based `generateSlug` with a different, ambiguity-free alphabet) all generate the card's public ID differently. Only one of these should be the source of truth for the `cards.id` primary key / URL slug.
-
-- **`nanoid` version risk**: `routes/cards.js` uses `const { nanoid } = require('nanoid')`. `nanoid` v4+ is ESM-only and **will throw on `require()`** under CommonJS. Confirm `backend/package.json` pins `nanoid@^3` if this file is actually in the active code path — otherwise card creation will crash at import time.
-
-- **Upload path mismatch**: `utils/imageProcessing.js` resolves `UPLOADS_DIR` as `path.join(__dirname, '..', '..', 'uploads')` — two levels up from `backend/utils`, i.e. the **project root's** `uploads/` folder. `server.js` and `routes/cards.js` both use `path.join(__dirname, 'uploads')`, i.e. **`backend/uploads`**. If `imageProcessing.js` is actually used for saving files, images would be written outside the directory that `server.js` serves statically (`backend/uploads`) and would 404 on `/uploads/...`.
-
-- **Schema has both `id` and `slug` columns** (`backend/db.js`). Every consumer shown only ever generates a single card identifier and it's unclear whether `slug` is populated at insert time or left `NULL`. If any route reads by `slug` while inserts only populate `id` (or vice versa), lookups will fail silently (empty result, likely surfaced as a 404 on the card view page).
-
-- **Frontend API access pattern is duplicated**: `frontend/src/api/client.js` is a well-built abstraction (with `ApiError`, field-level validation errors, etc.) intended for all API calls, but `CardViewPage.jsx` defines its own `API_BASE = '/api/cards'` and appears to fetch directly rather than going through `client.js`. Functionally this can still work, but it bypasses the shared error-handling/field-error logic and is a maintenance smell.
-
-- **Env config appears unused**: `.env.example` defines `UPLOAD_DIR` and `MAX_FILE_SIZE=5242880` (5MB), but every backend file shown hardcodes `'uploads'` and `8 * 1024 * 1024` (8MB) instead of reading `process.env`. The example env file is misleading — changing it currently has no effect.
-
-## 2. Missing / Unverified Wiring
-
-- **Cannot confirm `GET /api/cards/:id` exists.** Only the `POST /` handler in `routes/cards.js` was visible. `CardViewPage.jsx` and `CardCreatedPage.jsx` (via `ShareLinkBar`) both depend on being able to fetch a single card by ID — this route must exist and must return `photo_paths` in a shape the frontend gallery components expect (`PhotoGallery` accepts either `{url, thumbnailUrl}` objects or plain string URLs — confirm the API response matches one of these).
-- **Cannot confirm `router` from `routes/cards.js` is actually `app.use()`'d in `server.js`** — the visible portion of `server.js` never shows an `app.use('/api/cards', ...)` line; it only shows inline route-adjacent helpers. Verify this explicitly, since if it's missing, the frontend's `POST /api/cards` call has nothing to hit.
-- **Static file serving for `/uploads`** — verify `server.js` has `app.use('/uploads', express.static(UPLOADS_DIR))` (implied by the vite proxy config, not confirmed in the shown snippet).
-- **SPA fallback route** — verify `server.js` serves `FRONTEND_DIST/index.html` for non-API GET requests in production, otherwise refreshing `/card/:id` directly on the deployed server will 404 instead of letting React Router handle it.
-- **`backend/package.json` and `frontend/package.json`** were not included in this file set — dependency versions (especially `nanoid`, `sharp` prebuilt binaries, `better-sqlite3` native build) can't be verified and are common sources of "works on my machine" failures.
+- 🔴 **`backend/routes/admin.js` imports `require('../analytics')`**, but the actual file lives at `backend/utils/analytics.js`. There is no `backend/analytics.js`. This will throw `MODULE_NOT_FOUND` the moment `server.js` loads the admin router — **this is a near-certain contributor to the boot failure** in the execution gate. Fix: change to `require('../utils/analytics')`.
+- 🔴 **Server boot crash (`MODULE_NOT_FOUND` at `server.js:1:1`)**: since `require.requireStack` shows only `server.js`, the unresolved module is one required *directly* by it — top candidates given the visible code are `dotenv`, `cookie-parser`, or `express-session`. These must be present in `backend/package.json` `dependencies` **and** actually installed. Action: inspect `backend/package.json`, confirm all of `dotenv`, `express`, `cookie-parser`, `express-session`, `nanoid`, `multer`, `sharp`, `better-sqlite3` (if that's the real choice) are listed, then run a clean `npm install --prefix backend`.
+- ⚠️ `server.js` snippet cuts off before we can confirm it serves the built frontend (`frontend/dist`) statically in production. The root `npm start` script only runs `backend`, so if `server.js` doesn't have a static-serving + SPA-fallback block, `npm run build && npm start` will boot an API-only server with no way to serve the built UI. Please verify/add `express.static(path.join(__dirname, '../frontend/dist'))` + a catch-all route.
+- ⚠️ `backend/db.js` resolves `DB_PATH` to `backend/data/cards.db`, but `.env.example` also defines `DATABASE_PATH=./data/cards.db`, which doesn't appear to be read anywhere in the `db.js` excerpt shown (it hardcodes the path via `__dirname` instead of `process.env.DATABASE_PATH`). Minor drift between config surface and actual code.
+- ⚠️ Confirm `backend/utils/watermark.js` (imported by `routes/cards.js`) and `backend/analytics.js`/`utils/analytics.js` split actually resolves consistently — `routes/cards.js` imports `require('../utils/analytics')` (correct path) while `routes/admin.js` imports `require('../analytics')` (wrong path, see above) — same module, two different (only one correct) import paths in the codebase.
 
 ## 3. Setup & Run Steps
 
+> ⚠️ **Fix the two 🔴 issues above (`admin.js` import path, and confirm/install the missing backend dependency) before attempting to boot — the server currently exits with code 1.**
+
 ```bash
-# 1. Clone and install everything (root postinstall triggers backend + frontend installs)
-git clone <repo-url>
-cd birthday-wishes-card
+# 1. From the project root
+cd outputs/birthday-wishes-card
+
+# 2. Install all dependencies (root postinstall also installs backend + frontend)
 npm install
-# (or explicitly: npm run install:all)
 
-# 2. Configure the backend
+# 3. Configure backend environment
 cp backend/.env.example backend/.env
-# edit backend/.env if needed (PORT, BASE_URL, UPLOAD_DIR, MAX_FILE_SIZE)
-# NOTE: confirm these vars are actually read by server.js before relying on them
+# Edit backend/.env and set real values for:
+#   SESSION_SECRET, COOKIE_SECRET (generate via: openssl rand -base64 32)
+#   ADMIN_PASSWORD
+# (dev mode will fall back to insecure defaults with a warning if left unset,
+#  but the app refuses to boot in production without them)
 
-# 3. Development (runs backend :3001 + frontend :5173 concurrently, with Vite proxying /api and /uploads to the backend)
+# 4. (Optional) Frontend env override — only needed if API isn't proxied
+# frontend/.env
+#   VITE_API_BASE_URL=http://localhost:3001/api
+
+# 5. Run in development (concurrently starts backend :3001 + frontend :5173)
 npm run dev
-# App: http://localhost:5173
 
-# 4. Production build + run (single Node server serves built frontend + API)
-npm run build       # builds frontend -> frontend/dist
-npm start           # starts backend/server.js, which should serve frontend/dist + /api + /uploads
-# App: http://localhost:3001 (or PORT from .env)
+# 6. Verify
+#   Frontend: http://localhost:5173
+#   Backend health/API: http://localhost:3001/api/cards
+#   Admin panel: http://localhost:5173/admin
+
+# --- Production build ---
+npm run build          # builds frontend/dist
+npm start              # starts backend only — confirm server.js serves frontend/dist (see note above)
 ```
 
-**Before first run**, verify:
-1. `backend/data/` and `backend/uploads/` are writable (both are auto-created on boot, per `db.js` / `server.js`).
-2. The duplicate route/upload/ID-generation logic (Section 1) is reconciled to a single implementation — as-is, there's real risk of either a crash (`nanoid` require) or silent path mismatches (`imageProcessing.js` uploads dir) depending on which files are actually wired into `server.js`.
+**Before re-running the execution gate:**
+1. Fix `backend/routes/admin.js` → `require('../utils/analytics')`.
+2. Fix `backend/utils/analytics.js` → `const { db } = require('../db')`.
+3. Confirm `backend/package.json` lists and has installed `dotenv`, `cookie-parser`, `express-session`, and whichever SQLite driver is actually used.
+4. Reconcile `node:sqlite` vs `better-sqlite3` vs the `engines.node >= 18` claim — pick one and make it consistent everywhere (code, docs, `package.json`).
+5. Decide on one admin-auth mechanism (cookie session vs. header token) and remove the unused implementation (`middleware/adminAuth.js` vs `routes/admin.js` vs frontend's `adminAuthHeader`).
