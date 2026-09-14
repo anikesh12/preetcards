@@ -1,70 +1,88 @@
-try {
-  process.loadEnvFile();
-} catch {
-  // No .env file present -- fine locally without one, and expected in
-  // production where real environment variables are set directly.
-}
+require('dotenv').config();
 
+const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const express = require('express');
-require('./db');
+
 const cardsRouter = require('./routes/cards');
-const { handleUploadErrors } = require('./middleware/upload');
-const { ensureDeviceId } = require('./utils/analytics');
+const adminRouter = require('./routes/admin');
+
+const PORT = process.env.PORT || 3001;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+// Fail fast if ADMIN_PASSWORD is not set in production — the admin routes
+// must never run with an undefined/blank password in a live environment.
+if (NODE_ENV === 'production' && !ADMIN_PASSWORD) {
+  console.error(
+    '[FATAL] ADMIN_PASSWORD environment variable is not set. ' +
+      'Refusing to start in production without an admin password. ' +
+      'Set ADMIN_PASSWORD in your environment and restart the server.'
+  );
+  process.exit(1);
+}
+
+if (!ADMIN_PASSWORD) {
+  console.warn(
+    '[WARN] ADMIN_PASSWORD is not set. Admin routes will be inaccessible ' +
+      'until this is configured. This is only acceptable outside production.'
+  );
+}
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
+app.use(express.json());
+
+// Uploaded images (served from disk)
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
-const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
-
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
+app.use('/uploads', express.static(UPLOADS_DIR));
 
-app.use(express.json());
-app.use(ensureDeviceId);
-app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
+// API routes
+app.use('/api/cards', cardsRouter);
+app.use('/api/admin', adminRouter);
 
-// ---- API Routes ----
-
-app.get('/api/config', (req, res) => {
-  res.json({
-    tipJarUrl: process.env.TIP_JAR_URL || null,
-    adsenseClientId: process.env.ADSENSE_CLIENT_ID || null,
-    adsenseSlotId: process.env.ADSENSE_SLOT_ID || null,
-  });
+// Simple health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
-app.use('/api/cards', cardsRouter, handleUploadErrors);
-
-// ---- Serve frontend (production build) ----
+// Serve the built frontend (React SPA), including the /admin route which
+// resolves client-side via react-router.
+const FRONTEND_DIST = path.join(__dirname, '..', 'frontend', 'dist');
 
 if (fs.existsSync(FRONTEND_DIST)) {
   app.use(express.static(FRONTEND_DIST));
 
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-      return next();
-    }
+  // Any non-API GET request falls through to index.html so client-side
+  // routes (e.g. /admin, /:cardId) resolve correctly.
+  app.get(/^\/(?!api\/|uploads\/).*/, (req, res) => {
     res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
   });
+} else {
+  console.warn(
+    `[WARN] Frontend build not found at ${FRONTEND_DIST}. ` +
+      'Run the frontend build before starting in production.'
+  );
 }
 
-// ---- Error handling ----
-
-app.use((req, res) => {
-  res.status(404).json({ error: 'NOT_FOUND', message: 'Resource not found.' });
+// Fallback 404 handler for unmatched API routes
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
+// Generic error handler
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'SERVER_ERROR', message: 'An unexpected error occurred.' });
+  console.error(err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error',
+  });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server listening on port ${PORT} (${NODE_ENV})`);
 });
 
 module.exports = app;
