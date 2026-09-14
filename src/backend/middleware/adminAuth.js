@@ -1,61 +1,127 @@
 const crypto = require('crypto');
 
-// -----------------------------------------------------------------------------
-// Admin auth middleware
-//
-// Gates admin-only routes using a single shared credential stored in the
-// ADMIN_PASSWORD environment variable. Supports two auth flows:
-//
-//   1. Session/cookie based — a login form POSTs a password, this module
-//      verifies it and issues a signed, httpOnly session cookie. Subsequent
-//      requests are authenticated by validating that cookie.
-//   2. HTTP Basic Auth fallback — useful for scripts/tools or browsers
-//      hitting admin routes directly without going through the login form.
-//
-// No external session store or cookie-parsing dependency is required; cookies
-// are parsed/signed manually using Node's built-in crypto module.
-// -----------------------------------------------------------------------------
-
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const SESSION_SECRET = process.env.SESSION_SECRET;
 const COOKIE_NAME = 'admin_session';
-const SESSION_TTL_MS = Number(process.env.ADMIN_SESSION_TTL_MS) || 12 * 60 * 60 * 1000; // 12h default
+const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+const LOGIN_REDIRECT_PATH = process.env.ADMIN_LOGIN_PATH || '/admin/login';
 
-function getSecret() {
-  const secret = process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD;
-  if (!secret) {
-    throw new Error(
-      'ADMIN_PASSWORD (and optionally SESSION_SECRET) must be set to use admin auth middleware.'
+// --- Brute-force protection (per-IP, in-memory) ---
+const MAX_ATTEMPTS_BEFORE_LOCKOUT = 5;
+const ATTEMPT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const BASE_LOCKOUT_MS = 30 * 1000; // 30 seconds, doubles for each additional failure past the threshold
+
+const attemptStore = new Map(); // ip -> { count, firstAttempt, lockedUntil }
+
+function getClientIp(req) {
+  return req.ip || (req.connection && req.connection.remoteAddress) || 'unknown';
+}
+
+function cleanupAttemptStore() {
+  const now = Date.now();
+  for (const [ip, rec] of attemptStore.entries()) {
+    const expired = now - rec.firstAttempt > ATTEMPT_WINDOW_MS;
+    const lockoutOver = !rec.lockedUntil || rec.lockedUntil < now;
+    if (expired && lockoutOver) {
+      attemptStore.delete(ip);
+    }
+  }
+}
+setInterval(cleanupAttemptStore, 5 * 60 * 1000).unref();
+
+function isLocked(ip) {
+  const rec = attemptStore.get(ip);
+  return !!(rec && rec.lockedUntil && rec.lockedUntil > Date.now());
+}
+
+function getLockRemainingMs(ip) {
+  const rec = attemptStore.get(ip);
+  if (!rec || !rec.lockedUntil) return 0;
+  return Math.max(0, rec.lockedUntil - Date.now());
+}
+
+function recordFailure(ip) {
+  const now = Date.now();
+  let rec = attemptStore.get(ip);
+  if (!rec || now - rec.firstAttempt > ATTEMPT_WINDOW_MS) {
+    rec = { count: 0, firstAttempt: now, lockedUntil: 0 };
+  }
+  rec.count += 1;
+  if (rec.count >= MAX_ATTEMPTS_BEFORE_LOCKOUT) {
+    const backoffMultiplier = Math.pow(2, rec.count - MAX_ATTEMPTS_BEFORE_LOCKOUT);
+    rec.lockedUntil = now + BASE_LOCKOUT_MS * backoffMultiplier;
+    console.warn(
+      `[adminAuth] IP ${ip} locked out after ${rec.count} failed admin auth attempts. ` +
+      `Locked until ${new Date(rec.lockedUntil).toISOString()}.`
     );
   }
-  return secret;
+  attemptStore.set(ip, rec);
 }
 
-function getAdminPassword() {
-  const password = process.env.ADMIN_PASSWORD;
-  if (!password) {
-    throw new Error('ADMIN_PASSWORD environment variable is not set.');
-  }
-  return password;
+function recordSuccess(ip) {
+  attemptStore.delete(ip);
 }
 
-function timingSafeStringEqual(a, b) {
-  const bufA = Buffer.from(String(a));
-  const bufB = Buffer.from(String(b));
+// --- Constant-time comparisons ---
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
   if (bufA.length !== bufB.length) {
-    // Still run a comparison to keep timing roughly consistent.
+    // Compare against self to keep timing roughly constant, then fail.
     crypto.timingSafeEqual(bufA, bufA);
     return false;
   }
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function sign(value) {
-  const hmac = crypto.createHmac('sha256', getSecret());
-  hmac.update(value);
-  return hmac.digest('hex');
+// --- Config validation (fail closed) ---
+function assertConfigured() {
+  if (!ADMIN_PASSWORD) {
+    throw new Error(
+      '[adminAuth] ADMIN_PASSWORD env var is not set. Refusing to allow access to admin routes.'
+    );
+  }
+  if (!SESSION_SECRET) {
+    throw new Error(
+      '[adminAuth] SESSION_SECRET env var is not set. It must be configured independently of ' +
+      'ADMIN_PASSWORD (fail closed) — the app will not fall back to using the admin password as ' +
+      'the session-signing secret.'
+    );
+  }
+  if (safeEqual(SESSION_SECRET, ADMIN_PASSWORD)) {
+    console.warn(
+      '[adminAuth] WARNING: SESSION_SECRET is identical to ADMIN_PASSWORD. Use a distinct, ' +
+      'independently generated secret for signing sessions.'
+    );
+  }
 }
 
+// --- Session token (signed, stateless) ---
+function sign(payload) {
+  return crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+}
+
+function createSessionToken() {
+  const expires = Date.now() + SESSION_TTL_MS;
+  const payload = String(expires);
+  return `${payload}.${sign(payload)}`;
+}
+
+function verifySessionToken(token) {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const [payload, signature] = parts;
+  if (!safeEqual(signature, sign(payload))) return false;
+  const expires = parseInt(payload, 10);
+  if (!Number.isFinite(expires) || expires < Date.now()) return false;
+  return true;
+}
+
+// --- Cookie helpers (no external dependency required) ---
 function parseCookies(req) {
-  const header = req.headers && req.headers.cookie;
+  if (req.cookies && typeof req.cookies === 'object') return req.cookies;
+  const header = req.headers.cookie;
   const cookies = {};
   if (!header) return cookies;
   header.split(';').forEach((pair) => {
@@ -63,172 +129,158 @@ function parseCookies(req) {
     if (idx === -1) return;
     const key = pair.slice(0, idx).trim();
     const val = pair.slice(idx + 1).trim();
-    if (!key) return;
     try {
       cookies[key] = decodeURIComponent(val);
-    } catch (_err) {
+    } catch (err) {
       cookies[key] = val;
     }
   });
   return cookies;
 }
 
-function buildSessionToken() {
-  const expiresAt = Date.now() + SESSION_TTL_MS;
-  const payload = `${expiresAt}`;
-  const signature = sign(payload);
-  return `${payload}.${signature}`;
+function setSessionCookie(res, token) {
+  const secure = process.env.NODE_ENV === 'production';
+  const parts = [
+    `${COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Strict',
+    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+  ];
+  if (secure) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-function isValidSessionToken(token) {
-  if (!token || typeof token !== 'string') return false;
-  const dotIndex = token.lastIndexOf('.');
-  if (dotIndex === -1) return false;
-
-  const payload = token.slice(0, dotIndex);
-  const signature = token.slice(dotIndex + 1);
-
-  let expectedSignature;
-  try {
-    expectedSignature = sign(payload);
-  } catch (_err) {
-    return false;
-  }
-
-  if (!timingSafeStringEqual(signature, expectedSignature)) return false;
-
-  const expiresAt = Number(payload);
-  if (!Number.isFinite(expiresAt)) return false;
-  if (Date.now() > expiresAt) return false;
-
-  return true;
+function clearSessionCookie(res) {
+  res.setHeader(
+    'Set-Cookie',
+    `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0`
+  );
 }
 
-function serializeCookie(name, value, options = {}) {
-  const parts = [`${name}=${encodeURIComponent(value)}`];
-
-  if (options.maxAgeMs !== undefined) {
-    parts.push(`Max-Age=${Math.floor(options.maxAgeMs / 1000)}`);
-  }
-  parts.push('Path=/');
-  parts.push('HttpOnly');
-  parts.push('SameSite=Strict');
-  if (process.env.NODE_ENV === 'production') {
-    parts.push('Secure');
-  }
-  if (options.expire) {
-    parts.push('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
-  }
-
-  return parts.join('; ');
+// --- Shared config-check response ---
+function respondNotConfigured(res) {
+  return res.status(500).json({ error: 'Admin auth is not configured correctly on the server.' });
 }
 
-/**
- * Verifies a plaintext password against ADMIN_PASSWORD using a
- * timing-safe comparison.
- */
-function verifyPassword(password) {
-  if (typeof password !== 'string' || password.length === 0) return false;
-  let expected;
-  try {
-    expected = getAdminPassword();
-  } catch (_err) {
-    return false;
-  }
-  return timingSafeStringEqual(password, expected);
-}
-
-/**
- * Issues a signed admin session cookie on the response. Call after
- * verifying credentials submitted via the login form.
- */
-function createAdminSession(res) {
-  const token = buildSessionToken();
-  res.setHeader('Set-Cookie', serializeCookie(COOKIE_NAME, token, { maxAgeMs: SESSION_TTL_MS }));
-}
-
-/**
- * Clears the admin session cookie (logout).
- */
-function clearAdminSession(res) {
-  res.setHeader('Set-Cookie', serializeCookie(COOKIE_NAME, '', { expire: true }));
-}
-
-function parseBasicAuthHeader(header) {
-  if (!header || !header.startsWith('Basic ')) return null;
-  const base64Credentials = header.slice('Basic '.length).trim();
-  let decoded;
-  try {
-    decoded = Buffer.from(base64Credentials, 'base64').toString('utf8');
-  } catch (_err) {
-    return null;
-  }
-  const separatorIndex = decoded.indexOf(':');
-  if (separatorIndex === -1) return null;
-  return {
-    username: decoded.slice(0, separatorIndex),
-    password: decoded.slice(separatorIndex + 1),
-  };
+function respondLocked(req, res) {
+  const ip = getClientIp(req);
+  const remainingMs = getLockRemainingMs(ip);
+  res.setHeader('Retry-After', String(Math.ceil(remainingMs / 1000)));
+  return res.status(429).json({ error: 'Too many failed attempts. Try again later.' });
 }
 
 function wantsHtml(req) {
-  const accept = req.headers && req.headers.accept;
-  return typeof accept === 'string' && accept.includes('text/html');
+  return req.accepts(['html', 'json']) === 'html';
 }
 
-function rejectRequest(req, res) {
-  if (wantsHtml(req) && req.method === 'GET') {
-    res.redirect(302, '/admin/login');
-    return;
+function respondUnauthorized(req, res) {
+  res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+  if (wantsHtml(req)) {
+    return res.redirect(302, LOGIN_REDIRECT_PATH);
   }
-
-  res.setHeader('WWW-Authenticate', 'Basic realm="Admin", charset="UTF-8"');
-  res.status(401).json({ error: 'Unauthorized' });
+  return res.status(401).json({ error: 'Unauthorized' });
 }
 
 /**
- * Express middleware that gates admin routes.
- *
- * Accepts either:
- *   - A valid signed admin session cookie, or
- *   - HTTP Basic Auth credentials whose password matches ADMIN_PASSWORD.
- *
- * On success, calls next(). On failure, redirects browsers to /admin/login
- * or responds 401 for non-HTML/API requests.
+ * POST /admin/login handler.
+ * Expects { password } in the request body (JSON or urlencoded).
+ * On success, sets a signed session cookie.
  */
-function adminAuth(req, res, next) {
-  let adminPassword;
+function login(req, res) {
   try {
-    adminPassword = getAdminPassword();
+    assertConfigured();
   } catch (err) {
-    // Misconfigured server — fail closed, but surface a clear server error.
-    res.status(500).json({ error: 'Admin auth is not configured on this server.' });
-    return;
+    console.error(err.message);
+    return respondNotConfigured(res);
   }
 
-  const cookies = parseCookies(req);
-  const sessionToken = cookies[COOKIE_NAME];
-  if (isValidSessionToken(sessionToken)) {
-    next();
-    return;
+  const ip = getClientIp(req);
+
+  if (isLocked(ip)) {
+    return respondLocked(req, res);
   }
 
-  const basicAuthHeader = req.headers && req.headers.authorization;
-  const credentials = parseBasicAuthHeader(basicAuthHeader);
-  if (credentials && timingSafeStringEqual(credentials.password, adminPassword)) {
-    // Grant access for this request and issue a session cookie so
-    // subsequent requests don't need to keep sending Basic Auth.
-    createAdminSession(res);
-    next();
-    return;
+  const password = req.body && req.body.password;
+
+  if (!password || !safeEqual(password, ADMIN_PASSWORD)) {
+    recordFailure(ip);
+    return res.status(401).json({ error: 'Invalid password.' });
   }
 
-  rejectRequest(req, res);
+  recordSuccess(ip);
+  setSessionCookie(res, createSessionToken());
+  return res.status(200).json({ ok: true });
 }
 
-module.exports = adminAuth;
-module.exports.adminAuth = adminAuth;
-module.exports.verifyPassword = verifyPassword;
-module.exports.createAdminSession = createAdminSession;
-module.exports.clearAdminSession = clearAdminSession;
-module.exports.COOKIE_NAME = COOKIE_NAME;
+/**
+ * POST /admin/logout handler. Clears the session cookie.
+ */
+function logout(req, res) {
+  clearSessionCookie(res);
+  return res.status(200).json({ ok: true });
+}
+
+/**
+ * Express middleware gating admin routes.
+ * Accepts either:
+ *  - a valid signed session cookie (issued via POST /admin/login), or
+ *  - HTTP Basic Auth with the shared ADMIN_PASSWORD (any username).
+ * Applies per-IP rate limiting with exponential backoff lockout to
+ * throttle brute-force attempts against the shared password.
+ */
+function adminAuth(req, res, next) {
+  try {
+    assertConfigured();
+  } catch (err) {
+    console.error(err.message);
+    return respondNotConfigured(res);
+  }
+
+  const ip = getClientIp(req);
+
+  if (isLocked(ip)) {
+    return respondLocked(req, res);
+  }
+
+  // 1. Session cookie
+  const cookies = parseCookies(req);
+  const sessionToken = cookies[COOKIE_NAME];
+  if (sessionToken && verifySessionToken(sessionToken)) {
+    return next();
+  }
+
+  // 2. HTTP Basic Auth fallback
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Basic ')) {
+    const base64Credentials = authHeader.slice('Basic '.length).trim();
+    let decoded = '';
+    try {
+      decoded = Buffer.from(base64Credentials, 'base64').toString('utf8');
+    } catch (err) {
+      decoded = '';
+    }
+    const separatorIdx = decoded.indexOf(':');
+    const password = separatorIdx === -1 ? decoded : decoded.slice(separatorIdx + 1);
+
+    if (password && safeEqual(password, ADMIN_PASSWORD)) {
+      recordSuccess(ip);
+      // Issue a session cookie so subsequent requests don't need to resend Basic Auth.
+      setSessionCookie(res, createSessionToken());
+      return next();
+    }
+
+    recordFailure(ip);
+    return respondUnauthorized(req, res);
+  }
+
+  // No credentials supplied at all: reject without counting it as a brute-force
+  // attempt (this is the normal first-visit path, not a guessed password).
+  return respondUnauthorized(req, res);
+}
+
+module.exports = {
+  adminAuth,
+  login,
+  logout,
+};
