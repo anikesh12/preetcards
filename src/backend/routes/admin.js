@@ -4,87 +4,199 @@ const analytics = require('../analytics');
 
 const router = express.Router();
 
-const COOKIE_NAME = 'admin_session';
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || 'birthday-card-admin-secret';
-const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// --- Fail-closed configuration check -------------------------------------
+// Admin auth is only as strong as these secrets. If either is missing we
+// refuse to let this module load at all, rather than silently falling back
+// to a hardcoded/guessable value. This will cause server startup to fail
+// (loudly, in logs) until the operator sets real values.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const SESSION_SECRET = process.env.SESSION_SECRET;
 
-function getSessionToken() {
+if (!ADMIN_PASSWORD || ADMIN_PASSWORD.trim() === '') {
+  throw new Error(
+    'admin.js: ADMIN_PASSWORD environment variable is not set. Refusing to start.'
+  );
+}
+
+if (!SESSION_SECRET || SESSION_SECRET.trim() === '') {
+  throw new Error(
+    'admin.js: SESSION_SECRET environment variable is not set. Refusing to start.'
+  );
+}
+
+const SESSION_COOKIE_NAME = 'admin_session';
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// --- Server-side session store --------------------------------------------
+// Each login generates a fresh random session id. The cookie carries that
+// id plus an HMAC signature (so it can't be forged/tampered with), but the
+// id must ALSO exist in this server-side store and not be expired. This
+// means:
+//   - every login produces a distinct, unpredictable token
+//   - sessions expire independently of the server secret
+//   - a session can be individually revoked (e.g. on logout) without
+//     invalidating every other session or requiring a secret rotation
+const sessions = new Map(); // sessionId -> { expiresAt: number }
+
+function createSession() {
+  const sessionId = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  sessions.set(sessionId, { expiresAt });
+  return { sessionId, expiresAt };
+}
+
+function revokeSession(sessionId) {
+  if (sessionId) sessions.delete(sessionId);
+}
+
+function isSessionValid(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session) return false;
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(sessionId);
+    return false;
+  }
+  return true;
+}
+
+function cleanupExpiredSessions() {
+  const now = Date.now();
+  for (const [id, session] of sessions.entries()) {
+    if (now > session.expiresAt) sessions.delete(id);
+  }
+}
+
+// Periodically sweep expired sessions so the store doesn't grow forever.
+const cleanupInterval = setInterval(cleanupExpiredSessions, 60 * 60 * 1000);
+if (typeof cleanupInterval.unref === 'function') cleanupInterval.unref();
+
+function signSessionId(sessionId) {
   return crypto
     .createHmac('sha256', SESSION_SECRET)
-    .update('admin-authenticated')
+    .update(sessionId)
     .digest('hex');
 }
 
+function buildCookieValue(sessionId) {
+  const signature = signSessionId(sessionId);
+  return `${sessionId}.${signature}`;
+}
+
+function parseCookieValue(cookieValue) {
+  if (!cookieValue || typeof cookieValue !== 'string') return null;
+  const separatorIndex = cookieValue.lastIndexOf('.');
+  if (separatorIndex === -1) return null;
+
+  const sessionId = cookieValue.slice(0, separatorIndex);
+  const signature = cookieValue.slice(separatorIndex + 1);
+  if (!sessionId || !signature) return null;
+
+  const expectedSignature = signSessionId(sessionId);
+
+  const providedBuf = Buffer.from(signature, 'hex');
+  const expectedBuf = Buffer.from(expectedSignature, 'hex');
+  if (providedBuf.length !== expectedBuf.length) return null;
+  if (!crypto.timingSafeEqual(providedBuf, expectedBuf)) return null;
+
+  return sessionId;
+}
+
 function timingSafeStringEqual(a, b) {
-  const bufA = Buffer.from(String(a || ''));
-  const bufB = Buffer.from(String(b || ''));
-  if (bufA.length !== bufB.length) {
-    // still run a comparison to keep timing consistent
-    crypto.timingSafeEqual(bufA, bufA);
+  const aBuf = Buffer.from(String(a));
+  const bBuf = Buffer.from(String(b));
+  if (aBuf.length !== bBuf.length) {
+    // Still run a comparison of equal length to avoid leaking length via
+    // early return timing, though this is a minor concern for passwords.
+    crypto.timingSafeEqual(aBuf, aBuf);
     return false;
   }
-  return crypto.timingSafeEqual(bufA, bufB);
+  return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-function cookieOptions() {
-  return {
+function setSessionCookie(res, sessionId, expiresAt) {
+  const cookieValue = buildCookieValue(sessionId);
+  res.cookie(SESSION_COOKIE_NAME, cookieValue, {
     httpOnly: true,
-    sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: COOKIE_MAX_AGE_MS,
+    sameSite: 'strict',
+    expires: new Date(expiresAt),
     path: '/',
-  };
+  });
 }
 
+function clearSessionCookie(res) {
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  });
+}
+
+// --- Middleware -------------------------------------------------------------
 function adminAuth(req, res, next) {
-  const token = req.cookies && req.cookies[COOKIE_NAME];
-  if (token && timingSafeStringEqual(token, getSessionToken())) {
-    return next();
+  const cookieValue = req.cookies && req.cookies[SESSION_COOKIE_NAME];
+  const sessionId = parseCookieValue(cookieValue);
+
+  if (!sessionId || !isSessionValid(sessionId)) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
-  return res.status(401).json({ error: 'Unauthorized' });
+
+  req.adminSessionId = sessionId;
+  next();
 }
 
+// --- Routes ------------------------------------------------------------------
+
+// POST /api/admin/login
 router.post('/login', (req, res) => {
   const { password } = req.body || {};
-  const adminPassword = process.env.ADMIN_PASSWORD;
 
-  if (!adminPassword) {
-    console.error('ADMIN_PASSWORD is not configured on the server.');
-    return res.status(500).json({ error: 'Admin login is not configured' });
+  if (!password || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Password is required' });
   }
 
-  if (!password || !timingSafeStringEqual(password, adminPassword)) {
+  if (!timingSafeStringEqual(password, ADMIN_PASSWORD)) {
     return res.status(401).json({ error: 'Invalid password' });
   }
 
-  res.cookie(COOKIE_NAME, getSessionToken(), cookieOptions());
-  return res.json({ success: true });
+  const { sessionId, expiresAt } = createSession();
+  setSessionCookie(res, sessionId, expiresAt);
+
+  res.json({ success: true });
 });
 
+// POST /api/admin/logout
 router.post('/logout', (req, res) => {
-  res.clearCookie(COOKIE_NAME, { ...cookieOptions(), maxAge: undefined });
-  return res.json({ success: true });
+  const cookieValue = req.cookies && req.cookies[SESSION_COOKIE_NAME];
+  const sessionId = parseCookieValue(cookieValue);
+
+  revokeSession(sessionId);
+  clearSessionCookie(res);
+
+  res.json({ success: true });
 });
 
+// GET /api/admin/stats
 router.get('/stats', adminAuth, (req, res) => {
   try {
-    const totalCards = analytics.getTotalCardsCreated();
-    const overallViews = analytics.getTotalViews(); // { total, unique }
-    const dailyViews = analytics.getViewsDaily(30); // [{ date, total, unique }]
-    const weeklyViews = analytics.getViewsWeekly(12); // [{ weekStart, total, unique }]
+    const totalCards = analytics.getTotalCardCount();
+    const totalViews = analytics.getTotalViewStats(); // { overall, unique }
+    const dailyViews = analytics.getDailyViewStats(30); // last 30 days
+    const weeklyViews = analytics.getWeeklyViewStats(12); // last 12 weeks
 
-    return res.json({
+    res.json({
       totalCards,
       views: {
-        overall: overallViews,
+        overall: totalViews.overall,
+        unique: totalViews.unique,
         daily: dailyViews,
         weekly: weeklyViews,
       },
     });
   } catch (err) {
     console.error('Failed to load admin stats:', err);
-    return res.status(500).json({ error: 'Failed to load stats' });
+    res.status(500).json({ error: 'Failed to load stats' });
   }
 });
 

@@ -1,153 +1,167 @@
-/**
- * API client for the Birthday Wishes Card app.
- * Handles card creation (multipart/form-data upload) and card retrieval.
- */
-
 const API_BASE = '/api';
 
-/**
- * Custom error class carrying HTTP status and optional field-level errors
- * returned by the backend, so UI components can show inline validation.
- */
-export class ApiError extends Error {
-  constructor(message, status, fieldErrors = null) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.fieldErrors = fieldErrors;
-  }
-}
+const ADMIN_AUTH_STORAGE_KEY = 'admin_auth_credentials';
 
 /**
- * Attempts to parse an error response body as JSON to extract a friendly
- * message and any field-level validation errors. Falls back gracefully.
+ * Generic response handler — throws a normalized error for non-OK responses.
  */
-async function buildApiErrorFromResponse(response, fallbackMessage) {
-  let message = fallbackMessage;
-  let fieldErrors = null;
-
-  try {
-    const data = await response.json();
-    if (data) {
-      if (typeof data.message === 'string' && data.message.trim()) {
+async function handleResponse(response) {
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const data = await response.json();
+      if (data && data.message) {
         message = data.message;
-      } else if (typeof data.error === 'string' && data.error.trim()) {
-        message = data.error;
       }
-      if (data.fieldErrors && typeof data.fieldErrors === 'object') {
-        fieldErrors = data.fieldErrors;
-      }
+    } catch {
+      // response body wasn't JSON — ignore and use default message
     }
-  } catch {
-    // Response body wasn't JSON (or was empty) — stick with fallbackMessage.
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
-
-  return new ApiError(message, response.status, fieldErrors);
+  return response.json();
 }
 
-/**
- * Creates a new birthday card.
- *
- * @param {Object} params
- * @param {string} params.recipientName - Name of the birthday person.
- * @param {string} params.message - Birthday message text.
- * @param {File[]} [params.photos] - Array of image File objects (max 6 recommended).
- * @param {(progress: number) => void} [onProgress] - Optional upload progress callback (0-100).
- * @returns {Promise<{id: string, [key: string]: any}>} The created card record, including its id/slug.
- * @throws {ApiError} On validation failure or network/server error.
- */
-export function createCard({ recipientName, message, photos = [] }, onProgress) {
-  const formData = new FormData();
-  formData.append('recipientName', recipientName ?? '');
-  formData.append('message', message ?? '');
+// ---------------------------------------------------------------------------
+// Card API (create + retrieve)
+// ---------------------------------------------------------------------------
 
-  photos.forEach((file) => {
-    formData.append('photos', file);
-  });
-
-  // Use XHR when progress reporting is requested, since fetch lacks
-  // native upload progress events. Otherwise, use fetch for simplicity.
-  if (typeof onProgress === 'function') {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${API_BASE}/cards`, true);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          onProgress(Math.round((event.loaded / event.total) * 100));
-        }
-      };
-
-      xhr.onload = () => {
-        let data;
-        try {
-          data = JSON.parse(xhr.responseText);
-        } catch {
-          data = null;
-        }
-
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(data);
-        } else {
-          const message =
-            (data && (data.message || data.error)) ||
-            'Something went wrong while creating your card. Please try again.';
-          const fieldErrors = (data && data.fieldErrors) || null;
-          reject(new ApiError(message, xhr.status, fieldErrors));
-        }
-      };
-
-      xhr.onerror = () => {
-        reject(new ApiError('Network error. Please check your connection and try again.', 0));
-      };
-
-      xhr.send(formData);
-    });
-  }
-
-  return fetch(`${API_BASE}/cards`, {
+export async function createCard(formData) {
+  const response = await fetch(`${API_BASE}/cards`, {
     method: 'POST',
     body: formData,
-  }).then(async (response) => {
-    if (!response.ok) {
-      throw await buildApiErrorFromResponse(
-        response,
-        'Something went wrong while creating your card. Please try again.'
-      );
-    }
-    return response.json();
-  }).catch((err) => {
-    if (err instanceof ApiError) throw err;
-    throw new ApiError('Network error. Please check your connection and try again.', 0);
   });
+  return handleResponse(response);
+}
+
+export async function getCard(cardId) {
+  const response = await fetch(`${API_BASE}/cards/${encodeURIComponent(cardId)}`);
+  return handleResponse(response);
+}
+
+// ---------------------------------------------------------------------------
+// Admin authentication helpers (Basic Auth, stored for the session only)
+// ---------------------------------------------------------------------------
+
+function encodeCredentials(username, password) {
+  return btoa(`${username}:${password}`);
+}
+
+function getStoredAdminCredentials() {
+  try {
+    return sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeAdminCredentials(encoded) {
+  try {
+    sessionStorage.setItem(ADMIN_AUTH_STORAGE_KEY, encoded);
+  } catch {
+    // sessionStorage unavailable (e.g. private mode) — credentials just won't persist
+  }
+}
+
+export function clearAdminCredentials() {
+  try {
+    sessionStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function setAdminCredentials(username, password) {
+  const encoded = encodeCredentials(username, password);
+  storeAdminCredentials(encoded);
+  return encoded;
+}
+
+export function hasAdminCredentials() {
+  return Boolean(getStoredAdminCredentials());
 }
 
 /**
- * Fetches a card by its id (short slug).
- *
- * @param {string} id - The card's short slug id.
- * @returns {Promise<Object>} The card record, including recipientName, message, and photos.
- * @throws {ApiError} With status 404 if the card doesn't exist, or other status on server error.
+ * Prompts the user for admin username/password via a simple browser prompt
+ * and stores the resulting Basic Auth credentials for subsequent requests.
+ * Returns the encoded credentials, or null if the user cancelled.
  */
-export async function getCard(id) {
-  if (!id) {
-    throw new ApiError('No card id provided.', 400);
+export function promptAdminLogin() {
+  const username = window.prompt('Admin username:');
+  if (!username) {
+    return null;
+  }
+  const password = window.prompt('Admin password:');
+  if (password === null) {
+    return null;
+  }
+  return setAdminCredentials(username, password);
+}
+
+/**
+ * Performs a fetch against an admin endpoint, attaching a Basic Auth header.
+ * On a 401 response, clears any stored credentials, prompts the user to
+ * re-login, and retries the request once with the new credentials.
+ */
+async function adminFetch(path, options = {}) {
+  let encoded = getStoredAdminCredentials();
+
+  if (!encoded) {
+    encoded = promptAdminLogin();
+    if (!encoded) {
+      const error = new Error('Admin login is required.');
+      error.status = 401;
+      throw error;
+    }
   }
 
-  let response;
-  try {
-    response = await fetch(`${API_BASE}/cards/${encodeURIComponent(id)}`);
-  } catch {
-    throw new ApiError('Network error. Please check your connection and try again.', 0);
+  const doRequest = (authValue) =>
+    fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: `Basic ${authValue}`,
+      },
+    });
+
+  let response = await doRequest(encoded);
+
+  if (response.status === 401) {
+    clearAdminCredentials();
+    const reEncoded = promptAdminLogin();
+    if (!reEncoded) {
+      const error = new Error('Admin authentication failed.');
+      error.status = 401;
+      throw error;
+    }
+    response = await doRequest(reEncoded);
+
+    if (response.status === 401) {
+      clearAdminCredentials();
+      const error = new Error('Admin authentication failed.');
+      error.status = 401;
+      throw error;
+    }
   }
 
-  if (!response.ok) {
-    const fallbackMessage =
-      response.status === 404
-        ? 'Card not found.'
-        : 'Something went wrong while loading this card. Please try again.';
-    throw await buildApiErrorFromResponse(response, fallbackMessage);
-  }
+  return handleResponse(response);
+}
 
-  return response.json();
+// ---------------------------------------------------------------------------
+// Admin API (stats)
+// ---------------------------------------------------------------------------
+
+export async function getAdminStats() {
+  return adminFetch('/admin/stats');
+}
+
+export async function getAdminOverview() {
+  return adminFetch('/admin/overview');
+}
+
+export async function getAdminCards(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const suffix = query ? `?${query}` : '';
+  return adminFetch(`/admin/cards${suffix}`);
 }
