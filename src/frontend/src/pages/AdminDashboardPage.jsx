@@ -1,530 +1,520 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 
-const ADMIN_AUTH_KEY = 'adminAuthHeader';
-
-const COLORS = {
-  coral: '#FF6F91',
-  gold: '#FFC75F',
-  plum: '#2E1F3B',
-  cream: '#FFFBF5',
-  errorRed: '#D64545',
-  white: '#FFFFFF',
-};
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 const styles = {
   page: {
     minHeight: '100vh',
-    background: COLORS.cream,
-    color: COLORS.plum,
-    fontFamily: "'Poppins', system-ui, -apple-system, sans-serif",
-    padding: '24px 16px 80px',
-    boxSizing: 'border-box',
-  },
-  loginWrap: {
-    maxWidth: 400,
-    margin: '10vh auto 0',
-    background: COLORS.white,
-    borderRadius: 16,
-    padding: '32px 28px',
-    boxShadow: '0 8px 24px rgba(46,31,59,0.12)',
-  },
-  logoRow: {
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 700,
-    color: COLORS.plum,
-    margin: 0,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: '#8A7A97',
-    marginTop: 6,
-  },
-  label: {
-    display: 'block',
-    fontSize: 13,
-    fontWeight: 600,
-    marginBottom: 6,
-    marginTop: 16,
-    color: COLORS.plum,
-  },
-  input: {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '10px 12px',
-    borderRadius: 10,
-    border: '1px solid #E7DCEE',
-    fontSize: 15,
-    outline: 'none',
-    background: COLORS.cream,
-    color: COLORS.plum,
-  },
-  errorText: {
-    color: COLORS.errorRed,
-    fontSize: 13,
-    marginTop: 10,
-  },
-  button: {
-    width: '100%',
-    marginTop: 22,
-    padding: '12px 16px',
-    borderRadius: 12,
-    border: 'none',
-    background: COLORS.coral,
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-    cursor: 'not-allowed',
-  },
-  dashboardWrap: {
-    maxWidth: 960,
-    margin: '0 auto',
+    background: '#FFFBF5',
+    fontFamily:
+      "'Poppins', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    color: '#2E1F3B',
+    paddingBottom: '48px',
   },
   header: {
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 24,
+    justifyContent: 'space-between',
+    padding: '20px 24px',
+    borderBottom: '1px solid rgba(46,31,59,0.08)',
+    background: '#FFFBF5',
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  title: {
+    fontSize: '22px',
+    fontWeight: 700,
+    margin: 0,
+    color: '#2E1F3B',
+  },
+  subtitle: {
+    fontSize: '13px',
+    color: 'rgba(46,31,59,0.6)',
+    margin: '2px 0 0',
   },
   logoutBtn: {
-    padding: '8px 16px',
-    borderRadius: 10,
-    border: `1px solid ${COLORS.plum}`,
     background: 'transparent',
-    color: COLORS.plum,
-    fontSize: 13,
+    border: '2px solid #FF6F91',
+    color: '#FF6F91',
+    borderRadius: '999px',
+    padding: '8px 18px',
+    fontSize: '14px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'background 0.15s, color 0.15s',
+  },
+  container: {
+    maxWidth: '960px',
+    margin: '0 auto',
+    padding: '32px 24px 0',
+  },
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '24px',
+    flexWrap: 'wrap',
+    gap: '12px',
+  },
+  toggleGroup: {
+    display: 'inline-flex',
+    background: '#fff',
+    borderRadius: '999px',
+    padding: '4px',
+    boxShadow: '0 2px 8px rgba(46,31,59,0.08)',
+  },
+  toggleBtn: (active) => ({
+    border: 'none',
+    borderRadius: '999px',
+    padding: '8px 20px',
+    fontSize: '14px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    background: active ? '#FF6F91' : 'transparent',
+    color: active ? '#fff' : '#2E1F3B',
+    transition: 'background 0.15s, color 0.15s',
+  }),
+  refreshBtn: {
+    background: 'transparent',
+    border: '1px solid rgba(46,31,59,0.15)',
+    color: '#2E1F3B',
+    borderRadius: '999px',
+    padding: '8px 16px',
+    fontSize: '13px',
     fontWeight: 600,
     cursor: 'pointer',
   },
-  statsRow: {
+  statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: 16,
-    marginBottom: 32,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '16px',
+    marginBottom: '32px',
   },
   statCard: {
-    background: COLORS.white,
-    borderRadius: 16,
-    padding: '20px 18px',
+    background: '#fff',
+    borderRadius: '18px',
+    padding: '20px 22px',
     boxShadow: '0 4px 14px rgba(46,31,59,0.08)',
+    borderTop: '4px solid #FFC75F',
+  },
+  statCardCoral: {
+    borderTop: '4px solid #FF6F91',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: '13px',
+    color: 'rgba(46,31,59,0.6)',
+    margin: 0,
     fontWeight: 600,
-    color: '#8A7A97',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: '0.04em',
   },
   statValue: {
-    fontSize: 30,
-    fontWeight: 800,
-    color: COLORS.plum,
-    marginTop: 6,
-  },
-  statAccentGold: {
-    color: '#B8860F',
-  },
-  statAccentCoral: {
-    color: COLORS.coral,
+    fontSize: '36px',
+    fontWeight: 700,
+    margin: '6px 0 0',
+    color: '#2E1F3B',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: '18px',
     fontWeight: 700,
-    margin: '32px 0 12px',
-    color: COLORS.plum,
+    margin: '0 0 16px',
+    color: '#2E1F3B',
   },
-  compareRow: {
-    display: 'flex',
-    gap: 24,
-    flexWrap: 'wrap',
-    background: COLORS.white,
-    borderRadius: 16,
-    padding: '20px 18px',
+  panel: {
+    background: '#fff',
+    borderRadius: '18px',
+    padding: '22px',
     boxShadow: '0 4px 14px rgba(46,31,59,0.08)',
-    marginBottom: 8,
+    marginBottom: '32px',
   },
-  compareItem: {
-    flex: '1 1 200px',
+  splitRow: {
+    display: 'flex',
+    gap: '24px',
+    flexWrap: 'wrap',
+    marginBottom: '18px',
+  },
+  splitItem: {
+    flex: '1 1 160px',
+  },
+  splitLabel: {
+    fontSize: '13px',
+    color: 'rgba(46,31,59,0.6)',
+    fontWeight: 600,
+  },
+  splitValue: {
+    fontSize: '24px',
+    fontWeight: 700,
+    margin: '2px 0 0',
   },
   barTrack: {
     width: '100%',
-    height: 10,
-    borderRadius: 6,
-    background: '#F1E7F5',
+    height: '14px',
+    borderRadius: '999px',
+    background: '#FFF1D9',
     overflow: 'hidden',
-    marginTop: 8,
+    display: 'flex',
   },
-  tableWrap: {
-    background: COLORS.white,
-    borderRadius: 16,
-    padding: '8px 18px 16px',
-    boxShadow: '0 4px 14px rgba(46,31,59,0.08)',
-    overflowX: 'auto',
+  barFillOverall: (pct) => ({
+    width: `${pct}%`,
+    background: '#FF6F91',
+    height: '100%',
+  }),
+  barFillUnique: (pct) => ({
+    width: `${pct}%`,
+    background: '#FFC75F',
+    height: '100%',
+  }),
+  legendRow: {
+    display: 'flex',
+    gap: '20px',
+    marginTop: '10px',
+    fontSize: '13px',
+    color: 'rgba(46,31,59,0.7)',
   },
+  legendDot: (color) => ({
+    display: 'inline-block',
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+    background: color,
+    marginRight: '6px',
+  }),
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    fontSize: 14,
   },
   th: {
     textAlign: 'left',
-    padding: '10px 8px',
-    color: '#8A7A97',
-    fontSize: 12,
+    fontSize: '12px',
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    borderBottom: '1px solid #F1E7F5',
-    whiteSpace: 'nowrap',
+    letterSpacing: '0.04em',
+    color: 'rgba(46,31,59,0.5)',
+    padding: '8px 10px',
+    borderBottom: '1px solid rgba(46,31,59,0.08)',
   },
   td: {
-    padding: '10px 8px',
-    borderBottom: '1px solid #F7F1FA',
-    whiteSpace: 'nowrap',
+    padding: '10px 10px',
+    fontSize: '14px',
+    borderBottom: '1px solid rgba(46,31,59,0.06)',
   },
   emptyState: {
-    padding: '16px 8px',
-    color: '#8A7A97',
-    fontSize: 14,
-  },
-  loadingWrap: {
     textAlign: 'center',
-    padding: '60px 20px',
-    color: COLORS.plum,
+    color: 'rgba(46,31,59,0.5)',
+    padding: '24px',
+    fontSize: '14px',
   },
-  footerLink: {
-    display: 'inline-block',
-    marginTop: 40,
-    color: COLORS.coral,
-    fontSize: 13,
+  skeletonCard: {
+    background: '#F1E9DE',
+    borderRadius: '18px',
+    height: '92px',
+  },
+  errorBox: {
+    background: '#fff',
+    border: '1px solid #FF6F91',
+    borderRadius: '14px',
+    padding: '24px',
+    textAlign: 'center',
+    color: '#2E1F3B',
+  },
+  errorBtn: {
+    marginTop: '14px',
+    background: '#FF6F91',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '999px',
+    padding: '10px 22px',
     fontWeight: 600,
-    textDecoration: 'none',
+    cursor: 'pointer',
+  },
+  loadingBar: {
+    height: '16px',
+    background: '#F1E9DE',
+    borderRadius: '8px',
+    marginBottom: '10px',
   },
 };
 
-function encodeBasicAuth(username, password) {
-  return `Basic ${btoa(`${username}:${password}`)}`;
+function getToken() {
+  return localStorage.getItem('adminToken');
 }
 
-function formatNumber(n) {
-  if (n === null || n === undefined || Number.isNaN(n)) return '0';
-  return Number(n).toLocaleString();
-}
-
-function BarCompare({ overall, unique }) {
-  const max = Math.max(overall, unique, 1);
-  return (
-    <div style={styles.compareRow}>
-      <div style={styles.compareItem}>
-        <div style={styles.statLabel}>Overall Views</div>
-        <div style={{ ...styles.statValue, ...styles.statAccentCoral }}>
-          {formatNumber(overall)}
-        </div>
-        <div style={styles.barTrack}>
-          <div
-            style={{
-              width: `${(overall / max) * 100}%`,
-              height: '100%',
-              background: COLORS.coral,
-            }}
-          />
-        </div>
-      </div>
-      <div style={styles.compareItem}>
-        <div style={styles.statLabel}>Unique Device Views</div>
-        <div style={{ ...styles.statValue, ...styles.statAccentGold }}>
-          {formatNumber(unique)}
-        </div>
-        <div style={styles.barTrack}>
-          <div
-            style={{
-              width: `${(unique / max) * 100}%`,
-              height: '100%',
-              background: COLORS.gold,
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BreakdownTable({ title, rows, periodLabel }) {
-  return (
-    <>
-      <h2 style={styles.sectionTitle}>{title}</h2>
-      <div style={styles.tableWrap}>
-        {rows && rows.length > 0 ? (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>{periodLabel}</th>
-                <th style={styles.th}>Cards Created</th>
-                <th style={styles.th}>Views</th>
-                <th style={styles.th}>Unique Views</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.period}>
-                  <td style={styles.td}>{row.period}</td>
-                  <td style={styles.td}>{formatNumber(row.cardsCreated)}</td>
-                  <td style={styles.td}>{formatNumber(row.views)}</td>
-                  <td style={styles.td}>{formatNumber(row.uniqueViews)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div style={styles.emptyState}>No data yet.</div>
-        )}
-      </div>
-    </>
-  );
-}
-
-function normalizeBreakdown(list, periodKey) {
-  if (!Array.isArray(list)) return [];
-  return list.map((item) => ({
-    period: item[periodKey] ?? item.period ?? '',
-    cardsCreated: item.cardsCreated ?? item.cards_created ?? 0,
-    views: item.views ?? item.viewCount ?? 0,
-    uniqueViews: item.uniqueViews ?? item.unique_views ?? item.uniqueDeviceViews ?? 0,
-  }));
+function clearToken() {
+  localStorage.removeItem('adminToken');
 }
 
 export default function AdminDashboardPage() {
-  const [authHeader, setAuthHeader] = useState(
-    () => sessionStorage.getItem(ADMIN_AUTH_KEY) || null
-  );
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState('');
-
+  const navigate = useNavigate();
+  const [period, setPeriod] = useState('daily');
   const [stats, setStats] = useState(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [statsError, setStatsError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const fetchStats = useCallback(async (header) => {
-    setStatsLoading(true);
-    setStatsError('');
-    try {
-      const res = await fetch('/api/admin/stats', {
-        method: 'GET',
-        headers: {
-          Authorization: header,
-        },
-      });
+  const goToLogin = useCallback(() => {
+    clearToken();
+    navigate('/admin/login', { replace: true });
+  }, [navigate]);
 
-      if (res.status === 401 || res.status === 403) {
-        sessionStorage.removeItem(ADMIN_AUTH_KEY);
-        setAuthHeader(null);
-        setStats(null);
-        setLoginError('Session expired. Please log in again.');
-        return;
+  const fetchStats = useCallback(
+    async (selectedPeriod) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const token = getToken();
+        const headers = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const res = await fetch(
+          `${API_BASE}/api/admin/stats?range=${selectedPeriod}`,
+          {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+          }
+        );
+
+        if (res.status === 401) {
+          goToLogin();
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error(`Failed to load stats (${res.status})`);
+        }
+
+        const data = await res.json();
+        setStats(data);
+      } catch (err) {
+        setError(err.message || 'Something went wrong loading stats.');
+      } finally {
+        setLoading(false);
       }
-
-      if (!res.ok) {
-        throw new Error(`Failed to load dashboard stats (${res.status})`);
-      }
-
-      const data = await res.json();
-      setStats(data);
-    } catch (err) {
-      setStatsError(err.message || 'Failed to load dashboard stats.');
-    } finally {
-      setStatsLoading(false);
-    }
-  }, []);
+    },
+    [goToLogin]
+  );
 
   useEffect(() => {
-    if (authHeader) {
-      fetchStats(authHeader);
-    }
-  }, [authHeader, fetchStats]);
+    fetchStats(period);
+  }, [period, fetchStats]);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoginError('');
-
-    if (!username.trim() || !password) {
-      setLoginError('Please enter both username and password.');
-      return;
-    }
-
-    setLoginLoading(true);
-    const header = encodeBasicAuth(username.trim(), password);
-
+  const handleLogout = async () => {
+    setLoggingOut(true);
     try {
-      const res = await fetch('/api/admin/login', {
+      const token = getToken();
+      const headers = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      await fetch(`${API_BASE}/api/admin/logout`, {
         method: 'POST',
-        headers: {
-          Authorization: header,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
+        headers,
+        credentials: 'include',
       });
-
-      if (res.status === 401 || res.status === 403) {
-        setLoginError('Invalid username or password.');
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(`Login failed (${res.status})`);
-      }
-
-      sessionStorage.setItem(ADMIN_AUTH_KEY, header);
-      setAuthHeader(header);
-      setPassword('');
-    } catch (err) {
-      setLoginError(err.message || 'Login failed. Please try again.');
+    } catch {
+      // ignore network errors on logout; proceed to clear session anyway
     } finally {
-      setLoginLoading(false);
+      clearToken();
+      setLoggingOut(false);
+      navigate('/admin/login', { replace: true });
     }
   };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem(ADMIN_AUTH_KEY);
-    setAuthHeader(null);
-    setStats(null);
-    setUsername('');
-    setPassword('');
-    setLoginError('');
-    setStatsError('');
-  };
-
-  if (!authHeader) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.loginWrap}>
-          <div style={styles.logoRow}>
-            <h1 style={styles.title}>Admin Login</h1>
-            <div style={styles.subtitle}>Sign in to view dashboard stats</div>
-          </div>
-          <form onSubmit={handleLogin}>
-            <label style={styles.label} htmlFor="admin-username">
-              Username
-            </label>
-            <input
-              id="admin-username"
-              type="text"
-              autoComplete="username"
-              style={styles.input}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              disabled={loginLoading}
-            />
-
-            <label style={styles.label} htmlFor="admin-password">
-              Password
-            </label>
-            <input
-              id="admin-password"
-              type="password"
-              autoComplete="current-password"
-              style={styles.input}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loginLoading}
-            />
-
-            {loginError && <div style={styles.errorText}>{loginError}</div>}
-
-            <button
-              type="submit"
-              style={{
-                ...styles.button,
-                ...(loginLoading ? styles.buttonDisabled : {}),
-              }}
-              disabled={loginLoading}
-            >
-              {loginLoading ? 'Signing in...' : 'Sign In'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   const totalCards = stats?.totalCards ?? 0;
   const totalViews = stats?.totalViews ?? 0;
-  const totalUniqueViews = stats?.totalUniqueViews ?? stats?.totalUniqueDeviceViews ?? 0;
-  const byDay = normalizeBreakdown(stats?.byDay, 'date');
-  const byWeek = normalizeBreakdown(stats?.byWeek, 'week');
+  const uniqueViews = stats?.uniqueViews ?? 0;
+  const breakdown = Array.isArray(stats?.breakdown) ? stats.breakdown : [];
+
+  const overallPct =
+    totalViews > 0 ? Math.round((totalViews / totalViews) * 100) : 0;
+  const uniquePct =
+    totalViews > 0 ? Math.round((uniqueViews / totalViews) * 100) : 0;
 
   return (
     <div style={styles.page}>
-      <div style={styles.dashboardWrap}>
-        <div style={styles.header}>
-          <div>
-            <h1 style={styles.title}>Admin Dashboard</h1>
-            <div style={styles.subtitle}>Card creation &amp; view analytics</div>
+      <header style={styles.header}>
+        <div style={styles.headerLeft}>
+          <h1 style={styles.title}>Admin Dashboard</h1>
+          <p style={styles.subtitle}>Birthday card stats at a glance</p>
+        </div>
+        <button
+          type="button"
+          style={styles.logoutBtn}
+          onClick={handleLogout}
+          disabled={loggingOut}
+        >
+          {loggingOut ? 'Logging out...' : 'Log out'}
+        </button>
+      </header>
+
+      <div style={styles.container}>
+        <div style={styles.toggleRow}>
+          <div style={styles.toggleGroup} role="group" aria-label="Breakdown period">
+            <button
+              type="button"
+              style={styles.toggleBtn(period === 'daily')}
+              onClick={() => setPeriod('daily')}
+            >
+              Daily
+            </button>
+            <button
+              type="button"
+              style={styles.toggleBtn(period === 'weekly')}
+              onClick={() => setPeriod('weekly')}
+            >
+              Weekly
+            </button>
           </div>
-          <button type="button" style={styles.logoutBtn} onClick={handleLogout}>
-            Log Out
+          <button
+            type="button"
+            style={styles.refreshBtn}
+            onClick={() => fetchStats(period)}
+            disabled={loading}
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
 
-        {statsLoading && (
-          <div style={styles.loadingWrap}>Loading dashboard stats...</div>
+        {error && (
+          <div style={styles.errorBox}>
+            <p style={{ margin: 0, fontWeight: 600 }}>Couldn't load dashboard data</p>
+            <p style={{ margin: '6px 0 0', fontSize: '14px', color: 'rgba(46,31,59,0.7)' }}>
+              {error}
+            </p>
+            <button
+              type="button"
+              style={styles.errorBtn}
+              onClick={() => fetchStats(period)}
+            >
+              Try again
+            </button>
+          </div>
         )}
 
-        {!statsLoading && statsError && (
-          <div style={styles.errorText}>{statsError}</div>
-        )}
-
-        {!statsLoading && !statsError && stats && (
+        {!error && (
           <>
-            <div style={styles.statsRow}>
-              <div style={styles.statCard}>
-                <div style={styles.statLabel}>Total Cards Created</div>
-                <div style={styles.statValue}>{formatNumber(totalCards)}</div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statLabel}>Total Views (Lifetime)</div>
-                <div style={{ ...styles.statValue, ...styles.statAccentCoral }}>
-                  {formatNumber(totalViews)}
-                </div>
-              </div>
-              <div style={styles.statCard}>
-                <div style={styles.statLabel}>Unique Device Views</div>
-                <div style={{ ...styles.statValue, ...styles.statAccentGold }}>
-                  {formatNumber(totalUniqueViews)}
-                </div>
-              </div>
+            <div style={styles.statsGrid}>
+              {loading && !stats ? (
+                <>
+                  <div style={styles.skeletonCard} />
+                  <div style={styles.skeletonCard} />
+                  <div style={styles.skeletonCard} />
+                </>
+              ) : (
+                <>
+                  <div style={styles.statCard}>
+                    <p style={styles.statLabel}>Total Cards Created</p>
+                    <p style={styles.statValue}>{totalCards.toLocaleString()}</p>
+                  </div>
+                  <div style={{ ...styles.statCard, ...styles.statCardCoral }}>
+                    <p style={styles.statLabel}>Total Card Views</p>
+                    <p style={styles.statValue}>{totalViews.toLocaleString()}</p>
+                  </div>
+                  <div style={styles.statCard}>
+                    <p style={styles.statLabel}>Unique Device Views</p>
+                    <p style={styles.statValue}>{uniqueViews.toLocaleString()}</p>
+                  </div>
+                </>
+              )}
             </div>
 
-            <h2 style={styles.sectionTitle}>Overall vs Unique Device Views</h2>
-            <BarCompare overall={totalViews} unique={totalUniqueViews} />
+            <div style={styles.panel}>
+              <h2 style={styles.sectionTitle}>Overall vs Unique-Device Views</h2>
+              {loading && !stats ? (
+                <>
+                  <div style={styles.loadingBar} />
+                  <div style={{ ...styles.loadingBar, width: '60%' }} />
+                </>
+              ) : totalViews === 0 ? (
+                <p style={styles.emptyState}>No views recorded yet.</p>
+              ) : (
+                <>
+                  <div style={styles.splitRow}>
+                    <div style={styles.splitItem}>
+                      <p style={styles.splitLabel}>Overall views</p>
+                      <p style={{ ...styles.splitValue, color: '#FF6F91' }}>
+                        {totalViews.toLocaleString()}
+                      </p>
+                    </div>
+                    <div style={styles.splitItem}>
+                      <p style={styles.splitLabel}>Unique-device views</p>
+                      <p style={{ ...styles.splitValue, color: '#C98A00' }}>
+                        {uniqueViews.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div style={styles.barTrack}>
+                    <div style={styles.barFillOverall(overallPct)} />
+                  </div>
+                  <div style={styles.barTrack} className="unique-bar">
+                    <div style={styles.barFillUnique(uniquePct)} />
+                  </div>
+                  <div style={styles.legendRow}>
+                    <span>
+                      <span style={styles.legendDot('#FF6F91')} />
+                      Overall ({overallPct}%)
+                    </span>
+                    <span>
+                      <span style={styles.legendDot('#FFC75F')} />
+                      Unique devices ({uniquePct}%)
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
 
-            <BreakdownTable
-              title="Breakdown by Day"
-              rows={byDay}
-              periodLabel="Date"
-            />
+            <div style={styles.panel}>
+              <h2 style={styles.sectionTitle}>
+                {period === 'daily' ? 'Daily' : 'Weekly'} Breakdown
+              </h2>
+              {loading && !stats ? (
+                <>
+                  <div style={styles.loadingBar} />
+                  <div style={styles.loadingBar} />
+                  <div style={{ ...styles.loadingBar, width: '80%' }} />
+                </>
+              ) : breakdown.length === 0 ? (
+                <p style={styles.emptyState}>No data for this period yet.</p>
+              ) : (
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>
+                        {period === 'daily' ? 'Date' : 'Week Of'}
+                      </th>
+                      <th style={styles.th}>Views</th>
+                      <th style={styles.th}>Unique Devices</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {breakdown.map((row) => (
+                      <tr key={row.period || row.date || row.week}>
+                        <td style={styles.td}>
+                          {row.period || row.date || row.week}
+                        </td>
+                        <td style={styles.td}>
+                          {(row.views ?? 0).toLocaleString()}
+                        </td>
+                        <td style={styles.td}>
+                          {(row.uniqueViews ?? 0).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
 
-            <BreakdownTable
-              title="Breakdown by Week"
-              rows={byWeek}
-              periodLabel="Week"
-            />
+            <p style={{ fontSize: '13px', color: 'rgba(46,31,59,0.5)' }}>
+              <Link to="/" style={{ color: '#FF6F91', fontWeight: 600 }}>
+                &larr; Back to Create Card
+              </Link>
+            </p>
           </>
         )}
-
-        <Link to="/" style={styles.footerLink}>
-          &larr; Back to Create Card
-        </Link>
       </div>
     </div>
   );
