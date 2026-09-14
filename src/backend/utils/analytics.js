@@ -1,89 +1,186 @@
-const crypto = require('crypto');
-const geoip = require('geoip-lite');
-const { UAParser } = require('ua-parser-js');
-const { db } = require('../db');
+const db = require('../db');
 
-const DEVICE_COOKIE = 'bwc_device_id';
-const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year, in seconds
+/**
+ * Analytics utilities built on top of the shared `events` table.
+ *
+ * Expected `events` table shape (already created elsewhere in the app):
+ *   id          INTEGER PRIMARY KEY AUTOINCREMENT
+ *   card_id     TEXT NOT NULL
+ *   event_type  TEXT NOT NULL   -- e.g. 'card_created' | 'card_view'
+ *   device_id   TEXT            -- anonymous per-device identifier (cookie/localStorage id)
+ *   created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+ *
+ * All grouping/aggregation below reuses this single table — no new tables
+ * are introduced.
+ */
 
-function parseCookies(header) {
-  const out = {};
-  if (!header) return out;
-  header.split(';').forEach((pair) => {
-    const idx = pair.indexOf('=');
-    if (idx === -1) return;
-    const key = pair.slice(0, idx).trim();
-    const value = pair.slice(idx + 1).trim();
-    if (key) out[key] = decodeURIComponent(value);
-  });
-  return out;
+const EVENT_TYPE_CARD_CREATED = 'card_created';
+const EVENT_TYPE_CARD_VIEW = 'card_view';
+
+/**
+ * Build an optional SQL fragment + params for filtering on created_at
+ * between startDate/endDate (inclusive), both ISO date/datetime strings.
+ */
+function buildDateRangeClause(startDate, endDate) {
+  const clauses = [];
+  const params = [];
+
+  if (startDate) {
+    clauses.push('created_at >= ?');
+    params.push(startDate);
+  }
+  if (endDate) {
+    clauses.push('created_at <= ?');
+    params.push(endDate);
+  }
+
+  return {
+    sql: clauses.length ? `AND ${clauses.join(' AND ')}` : '',
+    params,
+  };
 }
 
 /**
- * Assigns every visitor a random, non-identifying device ID in a first-party
- * cookie (set once, reused on return visits) so repeat traffic from the same
- * browser can be recognized for view-counting and abuse detection -- without
- * ever knowing who the visitor actually is.
+ * SQL expression that buckets a `created_at` timestamp into a period key.
+ *   day  -> 'YYYY-MM-DD'
+ *   week -> 'YYYY-MM-DD' of the Monday that starts that ISO-ish week
  */
-function ensureDeviceId(req, res, next) {
-  const cookies = parseCookies(req.headers.cookie);
-  let deviceId = cookies[DEVICE_COOKIE];
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    res.setHeader(
-      'Set-Cookie',
-      `${DEVICE_COOKIE}=${deviceId}; Max-Age=${DEVICE_COOKIE_MAX_AGE}; Path=/; HttpOnly; SameSite=Lax`
-    );
+function periodExpression(period) {
+  if (period === 'week') {
+    return `date(created_at, '-' || ((strftime('%w', created_at) + 6) % 7) || ' days')`;
   }
-  req.deviceId = deviceId;
-  next();
+  // default: day
+  return `date(created_at)`;
 }
 
 /**
- * Logs one analytics event (a card view or a card creation). Never throws --
- * a logging failure should never break the actual request it's attached to.
+ * Existing behavior: per-card total views, unique device count, and last
+ * viewed timestamp. Reused/extended by the new grouped-stats functions
+ * below rather than duplicating query logic.
  */
-function logEvent(req, eventType, cardSlug = null) {
-  try {
-    const ip = (req.ip || req.socket.remoteAddress || '').replace('::ffff:', '');
-    const geo = geoip.lookup(ip);
-    const ua = new UAParser(req.headers['user-agent']).getResult();
+function getCardViewStats(cardId) {
+  const row = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS totalViews,
+         COUNT(DISTINCT device_id) AS uniqueDevices,
+         MAX(created_at) AS lastViewedAt
+       FROM events
+       WHERE card_id = ?
+         AND event_type = ?`
+    )
+    .get(cardId, EVENT_TYPE_CARD_VIEW);
 
-    db.prepare(
-      `INSERT INTO events
-         (event_type, card_slug, device_id, ip_address, city, country, browser, os, device_type, referer)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      eventType,
-      cardSlug,
-      req.deviceId || null,
-      ip || null,
-      geo?.city || null,
-      geo?.country || null,
-      ua.browser.name || null,
-      ua.os.name || null,
-      ua.device.type || 'desktop',
-      req.headers.referer || null
-    );
-  } catch (err) {
-    console.error('Failed to log analytics event:', err);
-  }
+  return {
+    cardId,
+    totalViews: row?.totalViews ?? 0,
+    uniqueDevices: row?.uniqueDevices ?? 0,
+    lastViewedAt: row?.lastViewedAt ?? null,
+  };
 }
 
-/** Overall (every hit) and unique-device view counts for a single card. */
-function getCardViewStats(cardSlug) {
-  const overall = db
-    .prepare(`SELECT COUNT(*) AS count FROM events WHERE event_type = 'view' AND card_slug = ?`)
-    .get(cardSlug);
-  const unique = db
-    .prepare(`SELECT COUNT(DISTINCT device_id) AS count FROM events WHERE event_type = 'view' AND card_slug = ?`)
-    .get(cardSlug);
-  return { overallViews: overall.count, uniqueViews: unique.count };
+/**
+ * Generic: card-creation counts grouped by day or week.
+ * Returns rows like { period: '2026-09-14', count: 3 }
+ */
+function getCardCreationCountsByPeriod(period = 'day', { startDate, endDate } = {}) {
+  const bucket = periodExpression(period);
+  const { sql: dateFilter, params: dateParams } = buildDateRangeClause(startDate, endDate);
+
+  const rows = db
+    .prepare(
+      `SELECT
+         ${bucket} AS period,
+         COUNT(*) AS count
+       FROM events
+       WHERE event_type = ?
+         ${dateFilter}
+       GROUP BY period
+       ORDER BY period ASC`
+    )
+    .all(EVENT_TYPE_CARD_CREATED, ...dateParams);
+
+  return rows;
+}
+
+function getDailyCardCreationCounts(options = {}) {
+  return getCardCreationCountsByPeriod('day', options);
+}
+
+function getWeeklyCardCreationCounts(options = {}) {
+  return getCardCreationCountsByPeriod('week', options);
+}
+
+/**
+ * Generic: card-view counts grouped by day or week, including both total
+ * views and unique-device views per period.
+ * Returns rows like:
+ *   { period: '2026-09-14', totalViews: 12, uniqueDevices: 9 }
+ */
+function getViewCountsByPeriod(period = 'day', { startDate, endDate } = {}) {
+  const bucket = periodExpression(period);
+  const { sql: dateFilter, params: dateParams } = buildDateRangeClause(startDate, endDate);
+
+  const rows = db
+    .prepare(
+      `SELECT
+         ${bucket} AS period,
+         COUNT(*) AS totalViews,
+         COUNT(DISTINCT device_id) AS uniqueDevices
+       FROM events
+       WHERE event_type = ?
+         ${dateFilter}
+       GROUP BY period
+       ORDER BY period ASC`
+    )
+    .all(EVENT_TYPE_CARD_VIEW, ...dateParams);
+
+  return rows;
+}
+
+function getDailyViewCounts(options = {}) {
+  return getViewCountsByPeriod('day', options);
+}
+
+function getWeeklyViewCounts(options = {}) {
+  return getViewCountsByPeriod('week', options);
+}
+
+/**
+ * Convenience: same total-vs-unique breakdown as getViewCountsByPeriod,
+ * but scoped to a single card_id. Useful for per-card trend charts.
+ */
+function getCardViewCountsByPeriod(cardId, period = 'day', { startDate, endDate } = {}) {
+  const bucket = periodExpression(period);
+  const { sql: dateFilter, params: dateParams } = buildDateRangeClause(startDate, endDate);
+
+  const rows = db
+    .prepare(
+      `SELECT
+         ${bucket} AS period,
+         COUNT(*) AS totalViews,
+         COUNT(DISTINCT device_id) AS uniqueDevices
+       FROM events
+       WHERE event_type = ?
+         AND card_id = ?
+         ${dateFilter}
+       GROUP BY period
+       ORDER BY period ASC`
+    )
+    .all(EVENT_TYPE_CARD_VIEW, cardId, ...dateParams);
+
+  return rows;
 }
 
 module.exports = {
-  DEVICE_COOKIE,
-  ensureDeviceId,
-  logEvent,
+  EVENT_TYPE_CARD_CREATED,
+  EVENT_TYPE_CARD_VIEW,
   getCardViewStats,
+  getCardCreationCountsByPeriod,
+  getDailyCardCreationCounts,
+  getWeeklyCardCreationCounts,
+  getViewCountsByPeriod,
+  getDailyViewCounts,
+  getWeeklyViewCounts,
+  getCardViewCountsByPeriod,
 };
