@@ -3,8 +3,8 @@ const fsPromises = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const { UPLOADS_DIR } = require('../config/paths');
 
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 const CARD_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 const MAX_PHOTOS = 6;

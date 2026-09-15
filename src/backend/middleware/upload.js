@@ -3,11 +3,12 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { UPLOADS_DIR } = require('../config/paths');
 
 // Temp storage location — raw uploads land here before their contents
 // are verified and (later, in the route/controller) resized/optimized
 // into the public /uploads folder.
-const TMP_DIR = path.join(__dirname, '..', 'uploads', 'tmp');
+const TMP_DIR = path.join(UPLOADS_DIR, 'tmp');
 
 if (!fs.existsSync(TMP_DIR)) {
   fs.mkdirSync(TMP_DIR, { recursive: true });

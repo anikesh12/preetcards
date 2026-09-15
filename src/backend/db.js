@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
+const { DATABASE_PATH } = require('./config/paths');
 
 // ---------------------------------------------------------------------------
 // Canonical schema reference
@@ -34,8 +35,8 @@ const COLUMN_LIST = Object.freeze([
   COLUMNS.CREATED_AT,
 ]);
 
-const DB_DIR = path.join(__dirname, 'data');
-const DB_PATH = path.join(DB_DIR, 'cards.db');
+const DB_PATH = DATABASE_PATH;
+const DB_DIR = path.dirname(DB_PATH);
 
 // Ensure the data directory exists before opening the database file.
 if (!fs.existsSync(DB_DIR)) {
