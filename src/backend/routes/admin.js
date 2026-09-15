@@ -186,6 +186,9 @@ router.get('/stats', adminAuth, (req, res) => {
     const totalCards = analytics.getTotalCardCount();
     const { totalViews, uniqueViews } = analytics.getOverallViewSummary();
     const bucketed = analytics.getViewStatsBucketed({ granularity });
+    const deviceBreakdown = analytics.getEventFieldBreakdown('device_type', { eventType: 'view' });
+    const osBreakdown = analytics.getEventFieldBreakdown('os', { eventType: 'view' });
+    const recentCards = analytics.getRecentCards(20);
 
     res.json({
       totalCards,
@@ -195,7 +198,11 @@ router.get('/stats', adminAuth, (req, res) => {
         period: row.bucket,
         views: row.totalViews,
         uniqueViews: row.uniqueViews,
+        creates: row.totalCreates,
       })),
+      deviceBreakdown,
+      osBreakdown,
+      recentCards,
     });
   } catch (err) {
     console.error('Failed to load admin stats:', err);

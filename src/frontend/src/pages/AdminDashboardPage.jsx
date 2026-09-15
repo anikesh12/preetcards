@@ -238,10 +238,71 @@ const styles = {
     borderRadius: '8px',
     marginBottom: '10px',
   },
+  breakdownColumns: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '24px',
+  },
+  breakdownList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  breakdownRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  breakdownRowLabel: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '13px',
+    color: '#2E1F3B',
+  },
+  breakdownBarTrack: {
+    width: '100%',
+    height: '8px',
+    borderRadius: '999px',
+    background: '#FFF1D9',
+    overflow: 'hidden',
+  },
+  breakdownBarFill: (pct) => ({
+    width: `${pct}%`,
+    background: '#FF6F91',
+    height: '100%',
+  }),
+  thumbnail: {
+    width: '44px',
+    height: '44px',
+    borderRadius: '10px',
+    objectFit: 'cover',
+    display: 'block',
+    background: '#FFF1D9',
+  },
+  thumbnailPlaceholder: {
+    width: '44px',
+    height: '44px',
+    borderRadius: '10px',
+    background: '#FFF1D9',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '18px',
+  },
 };
 
 function getToken() {
   return localStorage.getItem('adminToken');
+}
+
+function formatDateTime(isoString) {
+  if (!isoString) return '—';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return isoString;
+  return date.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
 }
 
 function clearToken() {
@@ -327,6 +388,11 @@ export default function AdminDashboardPage() {
   const totalViews = stats?.totalViews ?? 0;
   const uniqueViews = stats?.uniqueViews ?? 0;
   const breakdown = Array.isArray(stats?.breakdown) ? stats.breakdown : [];
+  const deviceBreakdown = Array.isArray(stats?.deviceBreakdown) ? stats.deviceBreakdown : [];
+  const osBreakdown = Array.isArray(stats?.osBreakdown) ? stats.osBreakdown : [];
+  const recentCards = Array.isArray(stats?.recentCards) ? stats.recentCards : [];
+  const deviceTotal = deviceBreakdown.reduce((sum, row) => sum + row.count, 0);
+  const osTotal = osBreakdown.reduce((sum, row) => sum + row.count, 0);
 
   const overallPct =
     totalViews > 0 ? Math.round((totalViews / totalViews) * 100) : 0;
@@ -485,6 +551,7 @@ export default function AdminDashboardPage() {
                       <th style={styles.th}>
                         {period === 'daily' ? 'Date' : 'Week Of'}
                       </th>
+                      <th style={styles.th}>Cards Created</th>
                       <th style={styles.th}>Views</th>
                       <th style={styles.th}>Unique Devices</th>
                     </tr>
@@ -496,11 +563,115 @@ export default function AdminDashboardPage() {
                           {row.period || row.date || row.week}
                         </td>
                         <td style={styles.td}>
+                          {(row.creates ?? 0).toLocaleString()}
+                        </td>
+                        <td style={styles.td}>
                           {(row.views ?? 0).toLocaleString()}
                         </td>
                         <td style={styles.td}>
                           {(row.uniqueViews ?? 0).toLocaleString()}
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={styles.panel}>
+              <h2 style={styles.sectionTitle}>Views by Device &amp; OS</h2>
+              {loading && !stats ? (
+                <>
+                  <div style={styles.loadingBar} />
+                  <div style={{ ...styles.loadingBar, width: '70%' }} />
+                </>
+              ) : deviceTotal === 0 && osTotal === 0 ? (
+                <p style={styles.emptyState}>No view data yet.</p>
+              ) : (
+                <div style={styles.breakdownColumns}>
+                  <div>
+                    <p style={{ ...styles.splitLabel, marginBottom: '10px' }}>Device type</p>
+                    <div style={styles.breakdownList}>
+                      {deviceBreakdown.map((row) => {
+                        const pct = deviceTotal > 0 ? Math.round((row.count / deviceTotal) * 100) : 0;
+                        return (
+                          <div key={row.label} style={styles.breakdownRow}>
+                            <div style={styles.breakdownRowLabel}>
+                              <span style={{ textTransform: 'capitalize' }}>{row.label}</span>
+                              <span>{row.count.toLocaleString()} ({pct}%)</span>
+                            </div>
+                            <div style={styles.breakdownBarTrack}>
+                              <div style={styles.breakdownBarFill(pct)} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <p style={{ ...styles.splitLabel, marginBottom: '10px' }}>Operating system</p>
+                    <div style={styles.breakdownList}>
+                      {osBreakdown.map((row) => {
+                        const pct = osTotal > 0 ? Math.round((row.count / osTotal) * 100) : 0;
+                        return (
+                          <div key={row.label} style={styles.breakdownRow}>
+                            <div style={styles.breakdownRowLabel}>
+                              <span>{row.label}</span>
+                              <span>{row.count.toLocaleString()} ({pct}%)</span>
+                            </div>
+                            <div style={styles.breakdownBarTrack}>
+                              <div style={styles.breakdownBarFill(pct)} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={styles.panel}>
+              <h2 style={styles.sectionTitle}>Recent Cards</h2>
+              {loading && !stats ? (
+                <>
+                  <div style={styles.loadingBar} />
+                  <div style={styles.loadingBar} />
+                  <div style={{ ...styles.loadingBar, width: '80%' }} />
+                </>
+              ) : recentCards.length === 0 ? (
+                <p style={styles.emptyState}>No cards created yet.</p>
+              ) : (
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}></th>
+                      <th style={styles.th}>Recipient</th>
+                      <th style={styles.th}>Occasion</th>
+                      <th style={styles.th}>Created</th>
+                      <th style={styles.th}>Views</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentCards.map((card) => (
+                      <tr key={card.slug}>
+                        <td style={styles.td}>
+                          {card.thumbnailUrl ? (
+                            <img
+                              src={card.thumbnailUrl}
+                              alt=""
+                              style={styles.thumbnail}
+                            />
+                          ) : (
+                            <div style={styles.thumbnailPlaceholder}>🎉</div>
+                          )}
+                        </td>
+                        <td style={styles.td}>{card.recipientName}</td>
+                        <td style={{ ...styles.td, textTransform: 'capitalize' }}>
+                          {card.occasion?.replace('_', ' ')}
+                        </td>
+                        <td style={styles.td}>{formatDateTime(card.createdAt)}</td>
+                        <td style={styles.td}>{(card.viewCount ?? 0).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>

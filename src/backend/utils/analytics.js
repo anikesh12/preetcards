@@ -121,10 +121,11 @@ function getViewStatsBucketed({ granularity = 'day' } = {}) {
   const sql = `
     SELECT
       ${bucketExpr} AS bucket,
-      COUNT(*) AS totalViews,
-      COUNT(DISTINCT device_id) AS uniqueViews
+      COUNT(CASE WHEN event_type = 'view' THEN 1 END) AS totalViews,
+      COUNT(DISTINCT CASE WHEN event_type = 'view' THEN device_id END) AS uniqueViews,
+      COUNT(CASE WHEN event_type = 'create' THEN 1 END) AS totalCreates
     FROM events
-    WHERE event_type = 'view'
+    WHERE event_type IN ('view', 'create')
     GROUP BY bucket
     ORDER BY bucket ASC
   `;
@@ -133,7 +134,77 @@ function getViewStatsBucketed({ granularity = 'day' } = {}) {
     bucket: row.bucket,
     totalViews: row.totalViews,
     uniqueViews: row.uniqueViews,
+    totalCreates: row.totalCreates,
   }));
+}
+
+/**
+ * Breakdown of events by device type (mobile/tablet/desktop) or OS
+ * (Android/iOS/Windows/etc), for a given event type. Used by the admin
+ * dashboard to answer "what are people actually using to view/create cards".
+ * `field` is restricted to a fixed allowlist since it's a SQL identifier
+ * (column names can't be parameterized).
+ */
+const BREAKDOWN_FIELDS = Object.freeze(['device_type', 'os', 'browser']);
+
+function getEventFieldBreakdown(field, { eventType = 'view' } = {}) {
+  if (!BREAKDOWN_FIELDS.includes(field)) {
+    throw new Error(`getEventFieldBreakdown: invalid field "${field}"`);
+  }
+
+  const sql = `
+    SELECT COALESCE(${field}, 'Unknown') AS label, COUNT(*) AS count
+    FROM events
+    WHERE event_type = ?
+    GROUP BY label
+    ORDER BY count DESC
+  `;
+
+  return db.prepare(sql).all(eventType);
+}
+
+/**
+ * Most recently created cards, each with its view count and the device/OS
+ * of whoever created it (from that card's 'create' event) -- powers the
+ * admin dashboard's "Recent Cards" list.
+ */
+function getRecentCards(limit = 20) {
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+
+  const sql = `
+    SELECT
+      c.slug,
+      c.occasion,
+      c.recipient_name AS recipientName,
+      c.photo_paths AS photoPaths,
+      c.created_at AS createdAt,
+      (SELECT COUNT(*) FROM events e WHERE e.event_type = 'view' AND e.card_slug = c.slug) AS viewCount,
+      (SELECT device_type FROM events e WHERE e.event_type = 'create' AND e.card_slug = c.slug ORDER BY e.created_at ASC LIMIT 1) AS creatorDeviceType,
+      (SELECT os FROM events e WHERE e.event_type = 'create' AND e.card_slug = c.slug ORDER BY e.created_at ASC LIMIT 1) AS creatorOs
+    FROM cards c
+    ORDER BY c.created_at DESC
+    LIMIT ?
+  `;
+
+  return db.prepare(sql).all(safeLimit).map((row) => {
+    let firstPhoto = null;
+    try {
+      const parsed = JSON.parse(row.photoPaths || '[]');
+      firstPhoto = Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
+    } catch (err) {
+      firstPhoto = null;
+    }
+    return {
+      slug: row.slug,
+      occasion: row.occasion,
+      recipientName: row.recipientName,
+      createdAt: row.createdAt,
+      viewCount: row.viewCount,
+      thumbnailUrl: firstPhoto,
+      creatorDeviceType: row.creatorDeviceType || null,
+      creatorOs: row.creatorOs || null,
+    };
+  });
 }
 
 /** Site-wide total and unique-device view counts, across every card. */
@@ -159,6 +230,8 @@ module.exports = {
   logEvent,
   getCardViewStats,
   getViewStatsBucketed,
+  getEventFieldBreakdown,
+  getRecentCards,
   getOverallViewSummary,
   getTotalCardCount,
 };
