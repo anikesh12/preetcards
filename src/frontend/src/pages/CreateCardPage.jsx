@@ -19,6 +19,27 @@ const OCCASIONS = [
   { value: 'thank_you', label: 'Thank You' },
 ];
 
+const OCCASION_MESSAGE_NOUN = {
+  birthday: 'birthday message',
+  anniversary: 'anniversary message',
+  wedding: 'wedding wish',
+  engagement: 'engagement wish',
+  congratulations: 'congratulations message',
+  new_baby: 'new baby wish',
+  get_well: 'get well message',
+  farewell: 'farewell message',
+  retirement: 'retirement message',
+  thank_you: 'thank you message',
+};
+
+function messageNoun(occasion) {
+  return OCCASION_MESSAGE_NOUN[occasion] || OCCASION_MESSAGE_NOUN.birthday;
+}
+
+function titleCase(str) {
+  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 const COLLAGE_LAYOUTS = [
   { value: 'grid', label: 'Grid' },
   { value: 'spotlight', label: 'Spotlight' },
@@ -78,6 +99,8 @@ export default function CreateCardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  const messageLabel = titleCase(messageNoun(occasion));
+
   const validate = useCallback(() => {
     const nextErrors = {};
 
@@ -86,7 +109,7 @@ export default function CreateCardPage() {
     }
 
     if (!message.trim()) {
-      nextErrors.message = 'Birthday message is required.';
+      nextErrors.message = `${titleCase(messageNoun(occasion))} is required.`;
     } else if (message.length > MAX_MESSAGE_LENGTH) {
       nextErrors.message = `Message must be ${MAX_MESSAGE_LENGTH} characters or fewer.`;
     }
@@ -97,7 +120,7 @@ export default function CreateCardPage() {
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
-  }, [recipientName, message, photos]);
+  }, [recipientName, message, photos, occasion]);
 
   const addFiles = useCallback(
     (fileList) => {
@@ -213,7 +236,7 @@ export default function CreateCardPage() {
       }
 
       navigate(`/card/${cardId}/created`, {
-        state: { cardId, shareUrl, recipientName: recipientName.trim() },
+        state: { cardId, shareUrl, recipientName: recipientName.trim(), occasion },
       });
     } catch (error) {
       setSubmitError(error.message || 'Something went wrong. Please try again.');
@@ -611,13 +634,13 @@ export default function CreateCardPage() {
         </div>
 
         <div className="form-field">
-          <label htmlFor="message">Birthday Message</label>
+          <label htmlFor="message">{messageLabel}</label>
           <textarea
             id="message"
             name="message"
             value={message}
             onChange={(e) => setMessage(e.target.value.slice(0, MAX_MESSAGE_LENGTH))}
-            placeholder="Write a heartfelt birthday message..."
+            placeholder={`Write a heartfelt ${messageNoun(occasion)}...`}
             rows={6}
             required
             aria-invalid={Boolean(errors.message)}

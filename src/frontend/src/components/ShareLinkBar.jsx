@@ -113,8 +113,8 @@ export default function ShareLinkBar({ url, title, text }) {
 
     try {
       await navigator.share({
-        title: title || 'A birthday card for you!',
-        text: text || 'Check out this birthday card 🎂',
+        title: title || 'A card for you!',
+        text: text || 'Check out this card 🎉',
         url: shareUrl,
       });
     } catch (err) {

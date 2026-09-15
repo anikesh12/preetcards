@@ -2,6 +2,40 @@ import { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import ShareLinkBar from '../components/ShareLinkBar';
 
+const OCCASION_HEADINGS = {
+  birthday: 'Happy Birthday',
+  anniversary: 'Happy Anniversary',
+  wedding: 'Congratulations on Your Wedding',
+  engagement: 'Congratulations on Your Engagement',
+  congratulations: 'Congratulations',
+  new_baby: 'Congratulations',
+  get_well: 'Get Well Soon',
+  farewell: 'Farewell',
+  retirement: 'Happy Retirement',
+  thank_you: 'Thank You',
+};
+
+function occasionHeading(occasion) {
+  return OCCASION_HEADINGS[occasion] || OCCASION_HEADINGS.birthday;
+}
+
+const OCCASION_NOUN = {
+  birthday: 'birthday card',
+  anniversary: 'anniversary card',
+  wedding: 'wedding card',
+  engagement: 'engagement card',
+  congratulations: 'congratulations card',
+  new_baby: 'new baby card',
+  get_well: 'get well card',
+  farewell: 'farewell card',
+  retirement: 'retirement card',
+  thank_you: 'thank you card',
+};
+
+function occasionNoun(occasion) {
+  return OCCASION_NOUN[occasion] || OCCASION_NOUN.birthday;
+}
+
 const styles = {
   page: {
     minHeight: '100vh',
@@ -160,6 +194,7 @@ export default function CardCreatedPage() {
 
   const cardId = paramCardId || location.state?.cardId;
   const recipientName = location.state?.recipientName;
+  const occasion = location.state?.occasion || 'birthday';
 
   const [origin, setOrigin] = useState('');
   const [tipJarUrl, setTipJarUrl] = useState(null);
@@ -213,8 +248,8 @@ export default function CardCreatedPage() {
           </h1>
           <p style={styles.subtext}>
             {recipientName
-              ? `Your birthday card for ${recipientName} has been created. Share the link below so they can see it!`
-              : 'Your birthday card has been created. Share the link below so the birthday star can see it!'}
+              ? `Your ${occasionNoun(occasion)} for ${recipientName} has been created. Share the link below so they can see it!`
+              : `Your ${occasionNoun(occasion)} has been created. Share the link below so they can see it!`}
           </p>
 
           <div style={styles.linkBox}>
@@ -230,7 +265,8 @@ export default function CardCreatedPage() {
 
           <ShareLinkBar
             url={cardUrl}
-            title={recipientName ? `Happy Birthday, ${recipientName}!` : 'A birthday card for you!'}
+            title={recipientName ? `${occasionHeading(occasion)}, ${recipientName}!` : `${occasionHeading(occasion)}!`}
+            text={`Check out this ${occasionNoun(occasion)} 🎉`}
           />
 
           <div style={{ ...styles.ctaRow, marginTop: 24 }}>
