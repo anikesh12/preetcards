@@ -17,7 +17,7 @@ export default function NotFoundPage() {
       <h1>Page Not Found</h1>
       <p>This link doesn't lead anywhere. It may be mistyped or the card may have been removed.</p>
       <Link to="/" className="btn btn-primary">
-        Create a Birthday Card
+        Create a Card
       </Link>
     </div>
   );

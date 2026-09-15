@@ -47,7 +47,7 @@ function AdminLoginPage() {
       <div style={styles.container}>
         <header style={styles.header}>
           <h1 style={styles.title}>Admin Login</h1>
-          <p style={styles.tagline}>Sign in to manage birthday cards</p>
+          <p style={styles.tagline}>Sign in to manage PreetCards cards</p>
         </header>
 
         <form style={styles.form} onSubmit={handleSubmit} noValidate>

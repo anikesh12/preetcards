@@ -338,7 +338,7 @@ export default function AdminDashboardPage() {
       <header style={styles.header}>
         <div style={styles.headerLeft}>
           <h1 style={styles.title}>Admin Dashboard</h1>
-          <p style={styles.subtitle}>Birthday card stats at a glance</p>
+          <p style={styles.subtitle}>PreetCards stats at a glance</p>
         </div>
         <button
           type="button"

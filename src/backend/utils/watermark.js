@@ -1,6 +1,6 @@
 const sharp = require('sharp');
 
-const WATERMARK_TEXT = 'Birthday Wishes \u{1F389}';
+const WATERMARK_TEXT = 'PreetCards \u{1F389}';
 
 /**
  * Composites a small, semi-transparent brand watermark into the bottom-right

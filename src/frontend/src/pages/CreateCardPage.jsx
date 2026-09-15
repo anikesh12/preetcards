@@ -594,8 +594,8 @@ export default function CreateCardPage() {
       `}</style>
 
       <header className="create-card-header">
-        <h1 className="app-logo">🎉 Birthday Wishes</h1>
-        <p className="app-tagline">Make someone's birthday special</p>
+        <h1 className="app-logo">🎉 PreetCards</h1>
+        <p className="app-tagline">Make someone's day special</p>
       </header>
 
       <form className="create-card-form" onSubmit={handleSubmit} noValidate>
