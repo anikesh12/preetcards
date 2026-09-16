@@ -1,65 +1,53 @@
-# Integration Report — birthday-wishes-card
+# Integration Report — Birthday Wishes Card (PreetCards)
 
-## 1. Consistency Check
+## 1. Overall Consistency
 
-**Overall the frontend/backend contract is mostly coherent** (routes, occasions, collage layouts, and slug-based card IDs line up across `CreateCardPage.jsx`, `api/client.js`, `routes/cards.js`, and `db.js`). However, several pieces contradict each other or the stated architecture:
-
-| Area | Issue |
-|---|---|
-| **Database driver** | Architecture notes say SQLite via **better-sqlite3**, but `backend/db.js` actually uses `node:sqlite` (`DatabaseSync`) — Node's built-in experimental SQLite module. This requires **Node ≥ 22** with SQLite support, contradicts the documented dependency, and is not reflected in `package.json`'s `engines` field (`>=18`). |
-| **`analytics.js` DB import** | `cards.js` correctly destructures: `const { db } = require('../db')`. But `utils/analytics.js` does `const db = require('../db');` (no destructuring) — it will get the whole exports object (`{ db, TABLE, COLUMNS, ... }`), not a usable `DatabaseSync` handle. Any `db.prepare(...)` call in analytics.js will throw at runtime. |
-| **`routes/admin.js` require path** | `admin.js` does `const analytics = require('../analytics');`, resolving to `backend/analytics.js`. The actual file lives at `backend/utils/analytics.js`. **This require will fail (`MODULE_NOT_FOUND`)** as soon as any request hits an admin route that uses it, or immediately on boot if it's required at module load time. |
-| **Duplicate admin auth logic** | Both `middleware/adminAuth.js` (cookie + in-memory lockout) and `routes/admin.js` (its own session store + `SESSION_COOKIE_NAME`) implement admin session handling independently. It's unclear which is actually wired into `server.js` — likely only one is mounted, leaving the other dead code / a maintenance trap. |
-| **Admin auth model mismatch (frontend)** | `frontend/src/api/client.js` explicitly documents a **cookie-based, HttpOnly session** flow (no token stored client-side). But `frontend/src/api/adminClient.js` implements a **Bearer-token** flow (`localStorage` token, `Authorization` header). `AdminLoginPage.jsx` calls `/api/admin/login` directly via `fetch` and never captures/stores a token — so if the backend ever returns a token (matching `adminClient.js`'s expectation), it's silently dropped. Two incompatible admin auth patterns exist in the same app. |
-| **`.env.example` incomplete** | `server.js` hard-requires both `SESSION_SECRET` **and** `COOKIE_SECRET` in production (exits with code 1 if either is missing). `backend/.env.example` only documents `SESSION_SECRET` — `COOKIE_SECRET` is missing entirely, so anyone following the example file will still fail the production boot check. |
+The stack is architecturally coherent: React+Vite SPA talking to an Express API backed by SQLite (better-sqlite3), with sharp-based image processing and a shared `/api` prefix proxied in dev via `vite.config.js`. Naming conventions, folder layout (`/frontend`, `/backend`), and the config endpoint (`GET /api/config` ↔ `frontend/src/api/client.js#getConfig`) all line up correctly. However, the execution gate **failed outright** on both `npm run build` (frontend) and the backend boot check — this is not a cosmetic issue, the app cannot currently run.
 
 ## 2. Missing / Broken Wiring
 
-- ❌ **`backend/routes/admin.js` → `require('../analytics')`** — path is wrong; real file is `backend/utils/analytics.js`. This is likely the actual root cause (or a second, latent instance) of the class of `MODULE_NOT_FOUND` failure seen in the boot log.
-- ❌ **Boot failure reported**: `server.js:1:1` (`require('dotenv')`) throws `MODULE_NOT_FOUND`. This means the `backend/node_modules` directory does not have `dotenv` installed — either it's missing from `backend/package.json` dependencies, or `npm install` was never run inside `backend/`. **`backend/package.json` was not included in the provided files**, so it can't be confirmed it lists `dotenv`, `express`, `cookie-parser`, `express-session`, `multer`, `sharp`, `nanoid`, etc. as dependencies.
-- ⚠️ `utils/analytics.js`'s broken `db` import (see table above) means any admin dashboard stat endpoint calling into analytics will 500 at runtime, not at boot — a silent landmine.
-- ⚠️ No visibility into whether `server.js` serves the built `frontend/dist` in production (the file was truncated before this section) — cannot confirm the "single Node server serves frontend + API" claim in the architecture notes is actually implemented.
-- ⚠️ `frontend/vite.config.js` proxies `/api` and `/uploads` to `http://localhost:3001` — consistent with `backend/routes/cards.js` serving uploads and `api/client.js`'s `/api` base — this part is fine, contingent on the backend actually starting.
+| Issue | Detail |
+|---|---|
+| **Frontend build fails** | `frontend/src/pages/CardViewPage.jsx` imports `./CardViewPage.css`, but no such file exists in `pages/`. The actual stylesheet lives at `frontend/src/styles/cardView.css`. Fix: either move/rename the CSS into `pages/CardViewPage.css` or correct the import path to `../styles/cardView.css`. |
+| **Backend crashes on boot (MODULE_NOT_FOUND)** | `backend/middleware/adminAuth.js` is listed as **missing**, yet `backend/routes/admin.js` (and/or `server.js`) almost certainly requires it to protect `/api/admin/dashboard`-style routes. Since `admin.js` also throws synchronously if `ADMIN_PASSWORD`/`SESSION_SECRET` aren't set, any require of this chain during startup will kill the process. This matches the observed `code: 'MODULE_NOT_FOUND'` crash in `server.js`. |
+| **Admin router likely not mounted** | The visible portion of `server.js` only wires up `cardsRouter` and `configRouter`. There's no evidence of `app.use('/api/admin', adminRouter)`. `AdminLoginPage.jsx` calls `POST /api/admin/login` — if this route isn't mounted, login will always 404. |
+| **`.env.example` is missing required admin secrets** | `backend/routes/admin.js` hard-fails (`throw new Error(...)`) if `ADMIN_PASSWORD` or `SESSION_SECRET` are unset, but neither variable appears in `backend/.env.example`. A fresh setup following the example `.env` will always crash the server the moment the admin module is loaded. |
+| **`frontend/src/api/adminClient.js` missing** | Called out as absent. `AdminLoginPage.jsx`/`AdminDashboardPage.jsx` currently use raw `fetch` calls instead, so this may be dead scaffolding — but if any other file imports it, the frontend build will fail the same way `CardViewPage.css` did. Worth a repo-wide grep for `adminClient`. |
+| **`db.js` export shape mismatch** | `backend/db.js` (as shown) instantiates `const db = new Database(...)` and exposes helper functions — the visible snippet doesn't confirm a final `module.exports`, but `backend/utils/analytics.js` does `const { db } = require('../db');` (destructured). If `db.js` exports the instance directly (`module.exports = db`) rather than `{ db, createCard, ... }`, `analytics.js`'s `db` will be `undefined`, breaking every `db.prepare(...)` call inside it at first use. |
+| **Template ID mismatch** | Frontend (`CreateCardPage.jsx`) offers template ids `classic`, `confetti`, `balloons`, `customized-card`. Backend's `ALLOWED_TEMPLATES` in `routes/cards.js` allows `default`, `Customized-card` (capital C), `classic`, `confetti` — **`balloons` isn't allowlisted at all**, and casing on `customized-card` vs `Customized-card` won't match. Any card created with the "Balloon Fiesta" or "Customized Card" template will likely be rejected or silently coerced by validation. |
 
-## 3. Setup & Run Steps
-
-**Prerequisites:** Node.js ≥ 22 (required for `node:sqlite` used in `db.js`, despite `engines` saying `>=18` — bump this or switch back to `better-sqlite3` per the architecture doc).
+## 3. Setup / Run Steps
 
 ```bash
-# 1. From project root
-cd outputs/birthday-wishes-card
-
-# 2. Create backend env file
-cp backend/.env.example backend/.env
-
-# 3. Edit backend/.env and set REQUIRED values not in the example:
-#    SESSION_SECRET=<generate: openssl rand -base64 32>
-#    COOKIE_SECRET=<generate: openssl rand -base64 32>   # NOT in .env.example — add manually
-#    ADMIN_PASSWORD=<a real password>
-
-# 4. Install all dependencies (root postinstall runs backend+frontend installs)
+# 1. Clone and install (root postinstall triggers both frontend + backend installs)
+cd birthday-wishes-card
 npm install
 
-# 5. Fix known-broken require before starting (see §2):
-#    backend/routes/admin.js: change
-#      require('../analytics')  ->  require('../utils/analytics')
-#    utils/analytics.js: change
-#      const db = require('../db');  ->  const { db } = require('../db');
+# 2. Configure backend environment
+cd backend
+cp .env.example .env
+# Edit .env and, at minimum, add (NOT in the current example file):
+#   ADMIN_PASSWORD=<choose a strong password>
+#   SESSION_SECRET=<random 32+ char string>
+cd ..
 
-# 6. Run in dev mode (concurrently starts backend :3001 + frontend :5173)
+# 3. Fix known-broken wiring before running (see section 2):
+#    - resolve CardViewPage.css import path
+#    - add backend/middleware/adminAuth.js (or remove the require if unused)
+#    - confirm server.js mounts the admin router
+#    - align db.js export with analytics.js's `{ db }` import
+
+# 4. Development mode (concurrent backend :3001 + frontend :5173 with proxy)
 npm run dev
 
-# 7. Open the app
-#    http://localhost:5173        (frontend, proxies /api and /uploads to :3001)
-#    http://localhost:3001/api/…  (backend API directly, if needed)
+# 5. Production build + single-server run
+npm run build          # builds frontend into frontend/dist
+npm start              # starts backend/server.js (must also serve frontend/dist statically)
 ```
 
-**Production build:**
-```bash
-npm run build        # builds frontend/dist via Vite
-NODE_ENV=production SESSION_SECRET=... COOKIE_SECRET=... ADMIN_PASSWORD=... npm start
-# npm start -> backend/server.js — confirm it actually serves frontend/dist statically
-# before relying on this as a single-server deploy (unverified from provided source).
-```
-
-**Before this ships:** resolve the `require('../analytics')` path bug, verify `backend/package.json` lists `dotenv` (and all other backend deps) as dependencies, reconcile the two competing admin-auth implementations, and pick one DB driver (`node:sqlite` vs `better-sqlite3`) consistently between code and docs.
+**Verification checklist after fixes:**
+1. `npm run build` completes without Rollup resolution errors.
+2. `node backend/server.js` (or `npm start`) stays up — no `MODULE_NOT_FOUND`/thrown startup errors.
+3. Hit `GET /api/config` — should return JSON, not proxy error.
+4. Submit the create-card form for each of the 4 templates and confirm none are rejected by `ALLOWED_TEMPLATES`.
+5. Attempt `/admin` login with the configured `ADMIN_PASSWORD` and confirm `/api/admin/login` responds (not 404).
