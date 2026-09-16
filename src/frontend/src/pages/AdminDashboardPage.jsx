@@ -314,6 +314,12 @@ const styles = {
     fontSize: '13px',
     color: 'rgba(46,31,59,0.6)',
   },
+  cardLink: {
+    color: '#FF6F91',
+    fontWeight: 600,
+    fontSize: '13px',
+    textDecoration: 'none',
+  },
 };
 
 function getToken() {
@@ -740,6 +746,7 @@ export default function AdminDashboardPage() {
                         <th style={styles.th}>Occasion</th>
                         <th style={styles.th}>Created</th>
                         <th style={styles.th}>Views</th>
+                        <th style={styles.th}>Link</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -762,6 +769,16 @@ export default function AdminDashboardPage() {
                           </td>
                           <td style={styles.td}>{formatDateTime(card.createdAt)}</td>
                           <td style={styles.td}>{(card.viewCount ?? 0).toLocaleString()}</td>
+                          <td style={styles.td}>
+                            <a
+                              href={`/card/${card.slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={styles.cardLink}
+                            >
+                              View &rarr;
+                            </a>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
