@@ -164,9 +164,24 @@ function getEventFieldBreakdown(field, { eventType = 'view' } = {}) {
 }
 
 /**
- * A page of cards (most recent first), each with its view count and the
- * device/OS of whoever created it (from that card's 'create' event) --
- * powers the admin dashboard's "Cards" list. Superseded the old unpaginated
+ * Buckets a raw `os` value (as reported by ua-parser-js, e.g. "Android",
+ * "iOS", "Windows", "Mac OS") into the coarse android/ios/web split the
+ * admin dashboard shows per card -- anything that isn't a mobile OS we
+ * recognize counts as "web".
+ */
+function bucketPlatform(os) {
+  if (os === 'Android') return 'android';
+  if (os === 'iOS') return 'ios';
+  return 'web';
+}
+
+/**
+ * A page of cards (most recent first), each with its view count, the
+ * device/OS of whoever created it (from that card's 'create' event), and a
+ * per-card breakdown of *distinct devices that viewed it* by platform
+ * (android/ios/web) -- so a card that reached 10 different devices shows as
+ * "5 android, 4 ios, 1 web" rather than a bare global total. Powers the
+ * admin dashboard's "Cards" list. Superseded the old unpaginated
  * getRecentCards(), which was capped at 100 and couldn't page further.
  */
 function getCardsPage({ page = 1, limit = 20 } = {}) {
@@ -208,8 +223,28 @@ function getCardsPage({ page = 1, limit = 20 } = {}) {
       thumbnailUrl: firstPhoto,
       creatorDeviceType: row.creatorDeviceType || null,
       creatorOs: row.creatorOs || null,
+      devices: { android: 0, ios: 0, web: 0, total: 0 },
     };
   });
+
+  if (cards.length > 0) {
+    const bySlug = new Map(cards.map((c) => [c.slug, c.devices]));
+    const placeholders = cards.map(() => '?').join(',');
+    const deviceSql = `
+      SELECT card_slug AS slug, os, COUNT(DISTINCT device_id) AS count
+      FROM events
+      WHERE event_type = 'view' AND card_slug IN (${placeholders})
+      GROUP BY slug, os
+    `;
+    for (const row of db.prepare(deviceSql).all(...cards.map((c) => c.slug))) {
+      const devices = bySlug.get(row.slug);
+      if (!devices) continue;
+      devices[bucketPlatform(row.os)] += row.count;
+    }
+    for (const devices of bySlug.values()) {
+      devices.total = devices.android + devices.ios + devices.web;
+    }
+  }
 
   return {
     cards,

@@ -320,6 +320,10 @@ const styles = {
     fontSize: '13px',
     textDecoration: 'none',
   },
+  deviceBreakdown: {
+    fontSize: '12px',
+    color: 'rgba(46,31,59,0.7)',
+  },
 };
 
 function getToken() {
@@ -746,6 +750,7 @@ export default function AdminDashboardPage() {
                         <th style={styles.th}>Occasion</th>
                         <th style={styles.th}>Created</th>
                         <th style={styles.th}>Views</th>
+                        <th style={styles.th}>Devices Reached</th>
                         <th style={styles.th}>Link</th>
                       </tr>
                     </thead>
@@ -769,6 +774,18 @@ export default function AdminDashboardPage() {
                           </td>
                           <td style={styles.td}>{formatDateTime(card.createdAt)}</td>
                           <td style={styles.td}>{(card.viewCount ?? 0).toLocaleString()}</td>
+                          <td style={styles.td}>
+                            {card.devices?.total ? (
+                              <div>
+                                <div>{card.devices.total.toLocaleString()} devices</div>
+                                <div style={styles.deviceBreakdown}>
+                                  {card.devices.android} Android · {card.devices.ios} iOS · {card.devices.web} Web
+                                </div>
+                              </div>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                           <td style={styles.td}>
                             <a
                               href={`/card/${card.slug}`}
