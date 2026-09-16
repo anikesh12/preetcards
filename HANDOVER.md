@@ -139,3 +139,22 @@ Every file above passed an individual execution check, a QA spec review, and a s
 - CR14 Change request: frontend/src/api/adminClient.js -> frontend/src/api/adminClient.js [done]
 - CR15 Change request: frontend/src/main.jsx -> frontend/src/main.jsx [done]
 - CR16 Change request: frontend/src/styles/admin.css -> frontend/src/styles/admin.css [done]
+
+
+## Revision — Please add a new premium template option called "Customized-
+
+**Client request:** Please add a new premium template option called "Customized-card" to the existing style picker: a polaroid-style photo frame layout decorated with balloons, confetti, cake, and party hat graphics that match the app's current celebratory color palette. Label it with a small "premium" badge icon plus a separate small info icon; on hover (desktop) or tap (mobile) the info icon should show the tooltip text "Watch a video to create this one." All users can freely select and preview this template — no restriction there. Separately, implement a real GET /api/config endpoint that returns adsenseClientId, adsenseSlotId, tipJarUrl, rewardedAdClientId, and rewardedAdUnitId, all sourced from environment variables: wire up the existing but currently-unused ADSENSE_CLIENT_ID, ADSENSE_SLOT_ID, and TIP_JAR_URL into server.js, and add two new env vars, REWARDED_AD_CLIENT_ID and REWARDED_AD_UNIT_ID, to both .env.example and server.js/config logic. Finally, gate card creation behavior on this config: when a user selects the Customized-card template and clicks Create, if rewardedAdUnitId is configured, show the rewarded video ad first and only generate and share the card after the ad completes; if rewardedAdUnitId is not set, skip the ad entirely and create/share the card immediately, exactly like every other template.
+
+**Changes made:**
+- CR17 Change request: frontend/src/pages/CreateCardPage.jsx -> frontend/src/pages/CreateCardPage.jsx [done]
+- CR18 Change request: frontend/src/components/TemplateInfoBadge.jsx -> frontend/src/components/TemplateInfoBadge.jsx [done]
+- CR19 Change request: frontend/src/components/CustomizedCardTemplate.jsx -> frontend/src/components/CustomizedCardTemplate.jsx [failed]
+- CR20 Change request: frontend/src/components/RewardedAdModal.jsx -> frontend/src/components/RewardedAdModal.jsx [done]
+- CR21 Change request: frontend/src/pages/CardViewPage.jsx -> frontend/src/pages/CardViewPage.jsx [done]
+- CR22 Change request: frontend/src/api/client.js -> frontend/src/api/client.js [done]
+- CR23 Change request: frontend/src/styles/templates.css -> frontend/src/styles/templates.css [done]
+- CR24 Change request: backend/routes/config.js -> backend/routes/config.js [done]
+- CR25 Change request: backend/server.js -> backend/server.js [done]
+- CR26 Change request: backend/.env.example -> backend/.env.example [done]
+- CR27 Change request: backend/routes/cards.js -> backend/routes/cards.js [done]
+- CR28 Change request: backend/db.js -> backend/db.js [done]
