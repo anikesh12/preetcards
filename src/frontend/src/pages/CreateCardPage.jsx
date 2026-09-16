@@ -1,86 +1,68 @@
 import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import RewardedAdModal from '../components/RewardedAdModal';
+import './CreateCardPage.css';
 
 const MAX_PHOTOS = 6;
 const MAX_MESSAGE_LENGTH = 500;
-const MAX_FILE_SIZE_MB = 8;
+const MAX_PHOTO_SIZE_MB = 8;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
-const OCCASIONS = [
-  { value: 'birthday', label: 'Birthday' },
-  { value: 'anniversary', label: 'Anniversary' },
-  { value: 'wedding', label: 'Wedding' },
-  { value: 'engagement', label: 'Engagement' },
-  { value: 'congratulations', label: 'Congratulations' },
-  { value: 'new_baby', label: 'New Baby' },
-  { value: 'get_well', label: 'Get Well Soon' },
-  { value: 'farewell', label: 'Farewell' },
-  { value: 'retirement', label: 'Retirement' },
-  { value: 'thank_you', label: 'Thank You' },
+const TEMPLATES = [
+  {
+    id: 'classic',
+    name: 'Classic',
+    description: 'Simple, elegant and timeless',
+    premium: false,
+  },
+  {
+    id: 'confetti',
+    name: 'Confetti Pop',
+    description: 'Bright confetti burst celebration',
+    premium: false,
+  },
+  {
+    id: 'balloons',
+    name: 'Balloon Fiesta',
+    description: 'Floating balloons theme',
+    premium: false,
+  },
+  {
+    id: 'customized-card',
+    name: 'Customized Card',
+    description: 'Fully custom, video-guided design',
+    premium: true,
+    tooltip: 'Watch a video to create this one.',
+  },
 ];
 
-const OCCASION_MESSAGE_NOUN = {
-  birthday: 'birthday message',
-  anniversary: 'anniversary message',
-  wedding: 'wedding wish',
-  engagement: 'engagement wish',
-  congratulations: 'congratulations message',
-  new_baby: 'new baby wish',
-  get_well: 'get well message',
-  farewell: 'farewell message',
-  retirement: 'retirement message',
-  thank_you: 'thank you message',
-};
+function InfoIcon({ tooltip }) {
+  const [visible, setVisible] = useState(false);
 
-function messageNoun(occasion) {
-  return OCCASION_MESSAGE_NOUN[occasion] || OCCASION_MESSAGE_NOUN.birthday;
-}
-
-function titleCase(str) {
-  return str.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-const COLLAGE_LAYOUTS = [
-  { value: 'grid', label: 'Grid' },
-  { value: 'spotlight', label: 'Spotlight' },
-  { value: 'filmstrip', label: 'Filmstrip' },
-  { value: 'scatter', label: 'Scatter' },
-];
-
-function CollagePreview({ layout }) {
-  if (layout === 'spotlight') {
-    return (
-      <span className="collage-preview collage-preview--spotlight" aria-hidden="true">
-        <span className="cp-block cp-big" />
-        <span className="cp-block cp-small" />
-        <span className="cp-block cp-small" />
-      </span>
-    );
-  }
-  if (layout === 'filmstrip') {
-    return (
-      <span className="collage-preview collage-preview--filmstrip" aria-hidden="true">
-        <span className="cp-block cp-strip" />
-        <span className="cp-block cp-strip" />
-        <span className="cp-block cp-strip" />
-      </span>
-    );
-  }
-  if (layout === 'scatter') {
-    return (
-      <span className="collage-preview collage-preview--scatter" aria-hidden="true">
-        <span className="cp-block cp-tile cp-tile-1" />
-        <span className="cp-block cp-tile cp-tile-2" />
-        <span className="cp-block cp-tile cp-tile-3" />
-      </span>
-    );
-  }
   return (
-    <span className="collage-preview collage-preview--grid" aria-hidden="true">
-      <span className="cp-block cp-tile" />
-      <span className="cp-block cp-tile" />
-      <span className="cp-block cp-tile" />
-      <span className="cp-block cp-tile" />
+    <span
+      className="info-icon-wrapper"
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+      onFocus={() => setVisible(true)}
+      onBlur={() => setVisible(false)}
+      tabIndex={0}
+      role="button"
+      aria-label={tooltip}
+    >
+      <svg
+        className="info-icon"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle cx="12" cy="12" r="10" fill="#2E1F3B" opacity="0.15" />
+        <rect x="11" y="10" width="2" height="7" rx="1" fill="#2E1F3B" />
+        <circle cx="12" cy="7" r="1.2" fill="#2E1F3B" />
+      </svg>
+      {visible && <span className="info-tooltip">{tooltip}</span>}
     </span>
   );
 }
@@ -89,615 +71,269 @@ export default function CreateCardPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  const [occasion, setOccasion] = useState('birthday');
   const [recipientName, setRecipientName] = useState('');
   const [message, setMessage] = useState('');
   const [photos, setPhotos] = useState([]); // { file, previewUrl }
-  const [collageLayout, setCollageLayout] = useState('grid');
+  const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
+
   const [errors, setErrors] = useState({});
-  const [isDragging, setIsDragging] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [showAdModal, setShowAdModal] = useState(false);
+  const [pendingAdUnitId, setPendingAdUnitId] = useState(null);
 
-  const messageLabel = titleCase(messageNoun(occasion));
+  const revokePreviews = useCallback((list) => {
+    list.forEach((p) => {
+      if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+    });
+  }, []);
 
-  const validate = useCallback(() => {
-    const nextErrors = {};
-
-    if (!recipientName.trim()) {
-      nextErrors.recipientName = 'Recipient name is required.';
-    }
-
-    if (!message.trim()) {
-      nextErrors.message = `${titleCase(messageNoun(occasion))} is required.`;
-    } else if (message.length > MAX_MESSAGE_LENGTH) {
-      nextErrors.message = `Message must be ${MAX_MESSAGE_LENGTH} characters or fewer.`;
-    }
-
-    if (photos.length > MAX_PHOTOS) {
-      nextErrors.photos = `You can upload up to ${MAX_PHOTOS} photos.`;
-    }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  }, [recipientName, message, photos, occasion]);
-
-  const addFiles = useCallback(
+  const handleFilesSelected = useCallback(
     (fileList) => {
-      const incoming = Array.from(fileList);
-      let rejectionMessage = '';
+      const incoming = Array.from(fileList || []);
+      if (incoming.length === 0) return;
 
-      const validFiles = incoming.filter((file) => {
-        if (!ACCEPTED_TYPES.includes(file.type)) {
-          rejectionMessage = 'Only JPG, PNG, WEBP, or GIF images are supported.';
-          return false;
-        }
-        if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-          rejectionMessage = `Each photo must be under ${MAX_FILE_SIZE_MB}MB.`;
-          return false;
-        }
-        return true;
-      });
+      setErrors((prev) => ({ ...prev, photos: undefined }));
 
       setPhotos((prev) => {
-        const combined = [...prev, ...validFiles.map((file) => ({
-          file,
-          previewUrl: URL.createObjectURL(file),
-        }))];
-
-        if (combined.length > MAX_PHOTOS) {
-          rejectionMessage = `You can upload up to ${MAX_PHOTOS} photos.`;
-          return combined.slice(0, MAX_PHOTOS);
+        const remainingSlots = MAX_PHOTOS - prev.length;
+        if (remainingSlots <= 0) {
+          setErrors((e) => ({ ...e, photos: `You can upload up to ${MAX_PHOTOS} photos.` }));
+          return prev;
         }
-        return combined;
-      });
 
-      if (rejectionMessage) {
-        setErrors((prev) => ({ ...prev, photos: rejectionMessage }));
-      } else {
-        setErrors((prev) => ({ ...prev, photos: undefined }));
-      }
+        const valid = [];
+        let rejectionMessage = '';
+
+        for (const file of incoming) {
+          if (valid.length >= remainingSlots) {
+            rejectionMessage = `Only the first ${remainingSlots} photo(s) were added (max ${MAX_PHOTOS}).`;
+            break;
+          }
+          if (!ACCEPTED_TYPES.includes(file.type)) {
+            rejectionMessage = 'Some files were skipped — only JPG, PNG, WEBP or GIF images are allowed.';
+            continue;
+          }
+          if (file.size > MAX_PHOTO_SIZE_MB * 1024 * 1024) {
+            rejectionMessage = `Some files were skipped — max size is ${MAX_PHOTO_SIZE_MB}MB per photo.`;
+            continue;
+          }
+          valid.push({ file, previewUrl: URL.createObjectURL(file) });
+        }
+
+        if (rejectionMessage) {
+          setErrors((e) => ({ ...e, photos: rejectionMessage }));
+        }
+
+        return [...prev, ...valid];
+      });
     },
     []
   );
 
-  const handleFileInputChange = (event) => {
-    if (event.target.files && event.target.files.length) {
-      addFiles(event.target.files);
-    }
-    event.target.value = '';
+  const handleFileInputChange = (e) => {
+    handleFilesSelected(e.target.files);
+    e.target.value = '';
   };
 
-  const handleDrop = (event) => {
-    event.preventDefault();
-    setIsDragging(false);
-    if (event.dataTransfer.files && event.dataTransfer.files.length) {
-      addFiles(event.dataTransfer.files);
-    }
+  const handleDrop = (e) => {
+    e.preventDefault();
+    handleFilesSelected(e.dataTransfer.files);
   };
 
-  const handleDragOver = (event) => {
-    event.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (event) => {
-    event.preventDefault();
-    setIsDragging(false);
+  const handleDragOver = (e) => {
+    e.preventDefault();
   };
 
   const removePhoto = (index) => {
     setPhotos((prev) => {
-      const next = [...prev];
-      const [removed] = next.splice(index, 1);
-      if (removed) {
-        URL.revokeObjectURL(removed.previewUrl);
-      }
-      return next;
+      const target = prev[index];
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== index);
     });
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setSubmitError('');
+  const validateForm = () => {
+    const newErrors = {};
 
-    if (!validate()) {
-      return;
+    if (!recipientName.trim()) {
+      newErrors.recipientName = "Recipient name is required.";
     }
 
-    setIsSubmitting(true);
+    if (!message.trim()) {
+      newErrors.message = 'Birthday message is required.';
+    } else if (message.length > MAX_MESSAGE_LENGTH) {
+      newErrors.message = `Message must be ${MAX_MESSAGE_LENGTH} characters or fewer.`;
+    }
+
+    setErrors((prev) => ({ ...prev, ...newErrors, recipientName: newErrors.recipientName, message: newErrors.message }));
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const buildFormData = () => {
+    const formData = new FormData();
+    formData.append('recipientName', recipientName.trim());
+    formData.append('message', message.trim());
+    formData.append('templateId', selectedTemplate);
+    photos.forEach((p) => {
+      formData.append('photos', p.file);
+    });
+    return formData;
+  };
+
+  const submitCard = async () => {
+    setSubmitting(true);
+    setErrors((prev) => ({ ...prev, submit: undefined }));
 
     try {
-      const formData = new FormData();
-      formData.append('occasion', occasion);
-      formData.append('recipientName', recipientName.trim());
-      formData.append('message', message.trim());
-      formData.append('collageLayout', collageLayout);
-      photos.forEach(({ file }) => {
-        formData.append('photos', file);
-      });
-
-      const response = await fetch('/api/cards', {
+      const formData = buildFormData();
+      const res = await fetch('/api/cards', {
         method: 'POST',
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.message || 'Something went wrong creating your card.');
+      if (!res.ok) {
+        throw new Error('Failed to create card.');
       }
 
-      const data = await response.json();
+      const data = await res.json();
       const cardId = data.id || data.cardId;
-      const shareUrl = data.shareUrl || data.share_link || (cardId ? `${window.location.origin}/card/${cardId}` : '');
 
       if (!cardId) {
-        throw new Error('Card was created but no id was returned.');
+        throw new Error('No card id returned from server.');
       }
 
-      navigate(`/card/${cardId}/created`, {
-        state: { cardId, shareUrl, recipientName: recipientName.trim(), occasion },
-      });
-    } catch (error) {
-      setSubmitError(error.message || 'Something went wrong. Please try again.');
-      setIsSubmitting(false);
+      revokePreviews(photos);
+      navigate(`/${cardId}`);
+    } catch (err) {
+      setErrors((prev) => ({
+        ...prev,
+        submit: 'Something went wrong creating your card. Please try again.',
+      }));
+      setSubmitting(false);
     }
   };
 
-  const remainingChars = MAX_MESSAGE_LENGTH - message.length;
+  const handleCreateClick = async () => {
+    if (submitting) return;
+
+    const isValid = validateForm();
+    if (!isValid) return;
+
+    setSubmitting(true);
+    setErrors((prev) => ({ ...prev, submit: undefined }));
+
+    const templateObj = TEMPLATES.find((t) => t.id === selectedTemplate);
+
+    try {
+      const configRes = await fetch('/api/config');
+      const config = configRes.ok ? await configRes.json() : {};
+
+      if (templateObj?.premium && config?.rewardedAdUnitId) {
+        setPendingAdUnitId(config.rewardedAdUnitId);
+        setShowAdModal(true);
+        setSubmitting(false);
+        return;
+      }
+
+      await submitCard();
+    } catch (err) {
+      // If config fetch fails, fall back to submitting without an ad gate.
+      await submitCard();
+    }
+  };
+
+  const handleAdComplete = async () => {
+    setShowAdModal(false);
+    setPendingAdUnitId(null);
+    await submitCard();
+  };
+
+  const handleAdClose = () => {
+    setShowAdModal(false);
+    setPendingAdUnitId(null);
+    setSubmitting(false);
+  };
 
   return (
     <div className="create-card-page">
-      <style>{`
-        .create-card-page {
-          min-height: 100vh;
-          background: linear-gradient(180deg, #FFFBF5 0%, #FFF3E2 100%);
-          font-family: system-ui, -apple-system, sans-serif;
-          color: #2E1F3B;
-          padding: 40px 20px 64px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .create-card-header {
-          text-align: center;
-          margin-bottom: 28px;
-        }
-
-        .app-logo {
-          font-family: 'Poppins', system-ui, sans-serif;
-          font-weight: 700;
-          font-size: clamp(1.6rem, 6vw, 2.2rem);
-          color: #FFC75F;
-          text-shadow: 1.5px 1.5px 0 #2E1F3B, -1px -1px 0 #2E1F3B, 1px -1px 0 #2E1F3B, -1px 1px 0 #2E1F3B;
-          margin: 0 0 6px;
-        }
-
-        .app-tagline {
-          color: #5A4770;
-          font-size: 1rem;
-          margin: 0;
-        }
-
-        .create-card-form {
-          width: 100%;
-          max-width: 480px;
-          background: #FFFDF9;
-          border: 1px solid rgba(255, 111, 145, 0.15);
-          border-radius: 24px;
-          box-shadow: 0 10px 30px rgba(46, 31, 59, 0.10);
-          padding: 32px 28px;
-          display: flex;
-          flex-direction: column;
-          gap: 22px;
-        }
-
-        .form-field {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .form-field label {
-          font-weight: 600;
-          font-size: 0.9rem;
-          color: #2E1F3B;
-        }
-
-        .form-field input[type="text"],
-        .form-field select,
-        .form-field textarea {
-          width: 100%;
-          box-sizing: border-box;
-          padding: 12px 16px;
-          border-radius: 12px;
-          border: 2px solid #FFF3E2;
-          background: #FFFBF5;
-          font-size: 1rem;
-          font-family: inherit;
-          color: #2E1F3B;
-          transition: border-color 0.15s ease, background 0.15s ease;
-        }
-
-        .form-field select {
-          appearance: none;
-          -webkit-appearance: none;
-          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'><path d='M1 1l6 6 6-6' stroke='%235A4770' stroke-width='2' fill='none' fill-rule='evenodd'/></svg>");
-          background-repeat: no-repeat;
-          background-position: right 16px center;
-          padding-right: 40px;
-          cursor: pointer;
-        }
-
-        .form-field input[type="text"]::placeholder,
-        .form-field textarea::placeholder {
-          color: #B3A6C2;
-        }
-
-        .form-field input[type="text"]:focus,
-        .form-field select:focus,
-        .form-field textarea:focus {
-          outline: none;
-          border-color: #FF6F91;
-          background-color: #ffffff;
-        }
-
-        .form-field textarea {
-          resize: vertical;
-          min-height: 120px;
-          line-height: 1.6;
-        }
-
-        .char-counter {
-          align-self: flex-end;
-          font-size: 0.78rem;
-          color: #B3A6C2;
-          margin-top: -2px;
-        }
-
-        .field-error {
-          color: #E8503A;
-          font-size: 0.82rem;
-          font-weight: 500;
-          margin: 0;
-        }
-
-        .photo-dropzone {
-          border: 2px dashed #FFC75F;
-          border-radius: 16px;
-          background: #FFF9EC;
-          padding: 28px 16px;
-          text-align: center;
-          cursor: pointer;
-          transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
-        }
-
-        .photo-dropzone p {
-          margin: 0 0 4px;
-          font-weight: 600;
-          color: #2E1F3B;
-        }
-
-        .photo-dropzone:hover {
-          background: #FFF3D9;
-          border-color: #FF6F91;
-        }
-
-        .photo-dropzone:active {
-          transform: scale(0.99);
-        }
-
-        .photo-dropzone--dragging {
-          background: #FFEEF1;
-          border-color: #FF6F91;
-        }
-
-        .photo-hint {
-          font-size: 0.8rem;
-          color: #5A4770;
-          font-weight: 400 !important;
-        }
-
-        .photo-preview-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 10px;
-          margin-top: 12px;
-        }
-
-        .photo-preview-item {
-          position: relative;
-          aspect-ratio: 1 / 1;
-          border-radius: 12px;
-          overflow: hidden;
-          box-shadow: 0 4px 10px rgba(46, 31, 59, 0.15);
-          border: 2px solid #ffffff;
-        }
-
-        .photo-preview-item img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-        }
-
-        .photo-remove-btn {
-          position: absolute;
-          top: 4px;
-          right: 4px;
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
-          border: none;
-          background: rgba(46, 31, 59, 0.75);
-          color: #fff;
-          font-size: 0.9rem;
-          line-height: 1;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .collage-options {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 10px;
-        }
-
-        .collage-option {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-          padding: 14px 10px;
-          border-radius: 14px;
-          border: 2px solid #FFF3E2;
-          background: #FFFBF5;
-          cursor: pointer;
-          transition: border-color 0.15s ease, background 0.15s ease;
-        }
-
-        .collage-option:hover {
-          border-color: #FFC75F;
-        }
-
-        .collage-option input {
-          position: absolute;
-          opacity: 0;
-          pointer-events: none;
-        }
-
-        .collage-option.is-selected {
-          border-color: #FF6F91;
-          background: #FFF0F4;
-        }
-
-        .collage-option-label {
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: #2E1F3B;
-        }
-
-        .collage-preview {
-          width: 64px;
-          height: 44px;
-          position: relative;
-          display: block;
-        }
-
-        .cp-block {
-          position: absolute;
-          background: #FFC75F;
-          border-radius: 3px;
-        }
-
-        .collage-preview--grid .cp-tile {
-          width: 28px;
-          height: 18px;
-        }
-        .collage-preview--grid .cp-tile:nth-child(1) { top: 0; left: 0; background: #FF6F91; }
-        .collage-preview--grid .cp-tile:nth-child(2) { top: 0; right: 0; background: #FFC75F; }
-        .collage-preview--grid .cp-tile:nth-child(3) { bottom: 0; left: 0; background: #FFC75F; }
-        .collage-preview--grid .cp-tile:nth-child(4) { bottom: 0; right: 0; background: #FF6F91; }
-
-        .collage-preview--spotlight .cp-big {
-          top: 0; left: 0;
-          width: 64px; height: 26px;
-          background: #FF6F91;
-        }
-        .collage-preview--spotlight .cp-small {
-          bottom: 0;
-          width: 28px; height: 16px;
-          background: #FFC75F;
-        }
-        .collage-preview--spotlight .cp-small:nth-of-type(2) { left: 0; }
-        .collage-preview--spotlight .cp-small:nth-of-type(3) { right: 0; }
-
-        .collage-preview--filmstrip .cp-strip {
-          top: 0;
-          width: 18px;
-          height: 44px;
-          background: #FFC75F;
-        }
-        .collage-preview--filmstrip .cp-strip:nth-child(1) { left: 0; background: #FF6F91; }
-        .collage-preview--filmstrip .cp-strip:nth-child(2) { left: 23px; }
-        .collage-preview--filmstrip .cp-strip:nth-child(3) { left: 46px; background: #FF6F91; }
-
-        .collage-preview--scatter .cp-tile {
-          width: 26px;
-          height: 26px;
-          background: #ffffff;
-          border: 1px solid #F0E4D8;
-          box-shadow: 0 2px 6px rgba(46, 31, 59, 0.15);
-        }
-        .collage-preview--scatter .cp-tile-1 { top: 2px; left: 4px; transform: rotate(-8deg); background: #FF6F91; }
-        .collage-preview--scatter .cp-tile-2 { top: 10px; left: 22px; transform: rotate(6deg); background: #FFC75F; }
-        .collage-preview--scatter .cp-tile-3 { top: 0; left: 38px; transform: rotate(-4deg); background: #FF6F91; }
-
-        .submit-error {
-          background: #FFF0EC;
-          border: 1px solid rgba(232, 80, 58, 0.3);
-          color: #E8503A;
-          padding: 12px 16px;
-          border-radius: 12px;
-          font-size: 0.9rem;
-          margin: 0;
-        }
-
-        .submit-btn {
-          width: 100%;
-          border: none;
-          border-radius: 999px;
-          background: #FF6F91;
-          color: #FFFBF5;
-          font-weight: 700;
-          font-size: 1.05rem;
-          font-family: 'Poppins', system-ui, sans-serif;
-          padding: 15px 20px;
-          cursor: pointer;
-          box-shadow: 0 8px 20px rgba(255, 111, 145, 0.4);
-          transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-        }
-
-        .submit-btn:hover:not(:disabled) {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 24px rgba(255, 111, 145, 0.5);
-        }
-
-        .submit-btn:active:not(:disabled) {
-          transform: translateY(0);
-        }
-
-        .submit-btn:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-        }
-
-        .spinner {
-          width: 16px;
-          height: 16px;
-          border: 2.5px solid rgba(255, 255, 255, 0.5);
-          border-top-color: #ffffff;
-          border-radius: 50%;
-          animation: create-card-spin 0.7s linear infinite;
-        }
-
-        @keyframes create-card-spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-
       <header className="create-card-header">
-        <h1 className="app-logo">🎉 PreetCards</h1>
-        <p className="app-tagline">Make someone's day special</p>
+        <h1 className="app-logo">🎂 Birthday Wishes</h1>
+        <p className="app-tagline">Make someone's birthday special</p>
       </header>
 
-      <form className="create-card-form" onSubmit={handleSubmit} noValidate>
-        <div className="form-field">
-          <label htmlFor="occasion">Occasion</label>
-          <select
-            id="occasion"
-            name="occasion"
-            value={occasion}
-            onChange={(e) => setOccasion(e.target.value)}
-          >
-            {OCCASIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-
+      <form
+        className="create-card-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleCreateClick();
+        }}
+      >
         <div className="form-field">
           <label htmlFor="recipientName">Recipient Name</label>
           <input
             id="recipientName"
-            name="recipientName"
             type="text"
             value={recipientName}
             onChange={(e) => setRecipientName(e.target.value)}
             placeholder="e.g. Priya"
-            required
-            aria-invalid={Boolean(errors.recipientName)}
-            aria-describedby={errors.recipientName ? 'recipientName-error' : undefined}
+            disabled={submitting}
           />
           {errors.recipientName && (
-            <p className="field-error" id="recipientName-error">
-              {errors.recipientName}
-            </p>
+            <span className="field-error">{errors.recipientName}</span>
           )}
         </div>
 
         <div className="form-field">
-          <label htmlFor="message">{messageLabel}</label>
+          <label htmlFor="message">Birthday Message</label>
           <textarea
             id="message"
-            name="message"
+            rows={5}
+            maxLength={MAX_MESSAGE_LENGTH}
             value={message}
-            onChange={(e) => setMessage(e.target.value.slice(0, MAX_MESSAGE_LENGTH))}
-            placeholder={`Write a heartfelt ${messageNoun(occasion)}...`}
-            rows={6}
-            required
-            aria-invalid={Boolean(errors.message)}
-            aria-describedby={errors.message ? 'message-error' : 'message-counter'}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Write a heartfelt birthday wish..."
+            disabled={submitting}
           />
-          <div className="char-counter" id="message-counter">
+          <div className="char-counter">
             {message.length}/{MAX_MESSAGE_LENGTH}
           </div>
-          {errors.message && (
-            <p className="field-error" id="message-error">
-              {errors.message}
-            </p>
-          )}
+          {errors.message && <span className="field-error">{errors.message}</span>}
         </div>
 
         <div className="form-field">
-          <label htmlFor="photos">Photos</label>
+          <label>Photos (optional, up to {MAX_PHOTOS})</label>
           <div
-            className={`photo-dropzone${isDragging ? ' photo-dropzone--dragging' : ''}`}
+            className="photo-dropzone"
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
             onClick={() => fileInputRef.current?.click()}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                fileInputRef.current?.click();
-              }
-            }}
           >
             <p>Tap or drag photos here</p>
-            <p className="photo-hint">
-              Up to {MAX_PHOTOS} photos, {MAX_FILE_SIZE_MB}MB each (JPG, PNG, WEBP, GIF)
-            </p>
+            <span className="photo-hint">
+              JPG, PNG, WEBP or GIF, up to {MAX_PHOTO_SIZE_MB}MB each
+            </span>
             <input
               ref={fileInputRef}
-              id="photos"
-              name="photos"
               type="file"
               accept={ACCEPTED_TYPES.join(',')}
               multiple
               onChange={handleFileInputChange}
+              disabled={submitting}
               hidden
             />
           </div>
 
           {photos.length > 0 && (
             <div className="photo-preview-grid">
-              {photos.map((photo, index) => (
-                <div className="photo-preview-item" key={photo.previewUrl}>
-                  <img src={photo.previewUrl} alt={`Upload preview ${index + 1}`} />
+              {photos.map((p, index) => (
+                <div className="photo-preview-item" key={p.previewUrl}>
+                  <img src={p.previewUrl} alt={`Preview ${index + 1}`} />
                   <button
                     type="button"
                     className="photo-remove-btn"
                     onClick={() => removePhoto(index)}
-                    aria-label={`Remove photo ${index + 1}`}
+                    disabled={submitting}
+                    aria-label="Remove photo"
                   >
                     ×
                   </button>
@@ -706,35 +342,41 @@ export default function CreateCardPage() {
             </div>
           )}
 
-          {errors.photos && <p className="field-error">{errors.photos}</p>}
+          {errors.photos && <span className="field-error">{errors.photos}</span>}
         </div>
 
         <div className="form-field">
-          <label>Collage Style</label>
-          <div className="collage-options" role="radiogroup" aria-label="Collage style">
-            {COLLAGE_LAYOUTS.map((option) => (
-              <label
-                key={option.value}
-                className={`collage-option${collageLayout === option.value ? ' is-selected' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="collageLayout"
-                  value={option.value}
-                  checked={collageLayout === option.value}
-                  onChange={() => setCollageLayout(option.value)}
-                />
-                <CollagePreview layout={option.value} />
-                <span className="collage-option-label">{option.label}</span>
-              </label>
-            ))}
+          <label>Choose a Style</label>
+          <div className="template-picker-grid">
+            {TEMPLATES.map((template) => {
+              const isSelected = selectedTemplate === template.id;
+              return (
+                <button
+                  type="button"
+                  key={template.id}
+                  className={`template-option${isSelected ? ' template-option--selected' : ''}`}
+                  onClick={() => setSelectedTemplate(template.id)}
+                  disabled={submitting}
+                >
+                  <div className="template-option-header">
+                    <span className="template-name">{template.name}</span>
+                    {template.premium && (
+                      <span className="premium-badge">PREMIUM</span>
+                    )}
+                    {template.tooltip && <InfoIcon tooltip={template.tooltip} />}
+                  </div>
+                  <span className="template-description">{template.description}</span>
+                  {isSelected && <span className="template-selected-check">✓ Selected</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {submitError && <p className="submit-error">{submitError}</p>}
+        {errors.submit && <div className="form-error-banner">{errors.submit}</div>}
 
-        <button type="submit" className="submit-btn" disabled={isSubmitting}>
-          {isSubmitting ? (
+        <button type="submit" className="create-card-cta" disabled={submitting}>
+          {submitting ? (
             <>
               <span className="spinner" aria-hidden="true" />
               Creating...
@@ -744,6 +386,14 @@ export default function CreateCardPage() {
           )}
         </button>
       </form>
+
+      {showAdModal && (
+        <RewardedAdModal
+          adUnitId={pendingAdUnitId}
+          onComplete={handleAdComplete}
+          onClose={handleAdClose}
+        />
+      )}
     </div>
   );
 }
