@@ -188,7 +188,6 @@ router.get('/stats', adminAuth, (req, res) => {
     const bucketed = analytics.getViewStatsBucketed({ granularity });
     const deviceBreakdown = analytics.getEventFieldBreakdown('device_type', { eventType: 'view' });
     const osBreakdown = analytics.getEventFieldBreakdown('os', { eventType: 'view' });
-    const recentCards = analytics.getRecentCards(20);
 
     res.json({
       totalCards,
@@ -202,11 +201,23 @@ router.get('/stats', adminAuth, (req, res) => {
       })),
       deviceBreakdown,
       osBreakdown,
-      recentCards,
     });
   } catch (err) {
     console.error('Failed to load admin stats:', err);
     res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
+// GET /api/admin/cards?page=&limit=
+router.get('/cards', adminAuth, (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const result = analytics.getCardsPage({ page, limit });
+    res.json(result);
+  } catch (err) {
+    console.error('Failed to load admin cards:', err);
+    res.status(500).json({ error: 'Failed to load cards' });
   }
 });
 

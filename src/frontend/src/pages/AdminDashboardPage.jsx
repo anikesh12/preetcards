@@ -289,6 +289,31 @@ const styles = {
     justifyContent: 'center',
     fontSize: '18px',
   },
+  paginationRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '16px',
+    marginTop: '16px',
+  },
+  pageBtn: {
+    background: 'transparent',
+    border: '1px solid rgba(46,31,59,0.15)',
+    color: '#2E1F3B',
+    borderRadius: '999px',
+    padding: '6px 16px',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  pageBtnDisabled: {
+    opacity: 0.4,
+    cursor: 'not-allowed',
+  },
+  pageLabel: {
+    fontSize: '13px',
+    color: 'rgba(46,31,59,0.6)',
+  },
 };
 
 function getToken() {
@@ -316,6 +341,12 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const CARDS_PAGE_SIZE = 20;
+  const [cardsPage, setCardsPage] = useState(1);
+  const [cardsData, setCardsData] = useState(null);
+  const [cardsLoading, setCardsLoading] = useState(true);
+  const [cardsError, setCardsError] = useState(null);
 
   const goToLogin = useCallback(() => {
     clearToken();
@@ -364,6 +395,48 @@ export default function AdminDashboardPage() {
     fetchStats(period);
   }, [period, fetchStats]);
 
+  const fetchCards = useCallback(
+    async (page) => {
+      setCardsLoading(true);
+      setCardsError(null);
+      try {
+        const token = getToken();
+        const headers = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const res = await fetch(
+          `${API_BASE}/api/admin/cards?page=${page}&limit=${CARDS_PAGE_SIZE}`,
+          {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+          }
+        );
+
+        if (res.status === 401) {
+          goToLogin();
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error(`Failed to load cards (${res.status})`);
+        }
+
+        const data = await res.json();
+        setCardsData(data);
+      } catch (err) {
+        setCardsError(err.message || 'Something went wrong loading cards.');
+      } finally {
+        setCardsLoading(false);
+      }
+    },
+    [goToLogin]
+  );
+
+  useEffect(() => {
+    fetchCards(cardsPage);
+  }, [cardsPage, fetchCards]);
+
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
@@ -390,7 +463,8 @@ export default function AdminDashboardPage() {
   const breakdown = Array.isArray(stats?.breakdown) ? stats.breakdown : [];
   const deviceBreakdown = Array.isArray(stats?.deviceBreakdown) ? stats.deviceBreakdown : [];
   const osBreakdown = Array.isArray(stats?.osBreakdown) ? stats.osBreakdown : [];
-  const recentCards = Array.isArray(stats?.recentCards) ? stats.recentCards : [];
+  const cards = Array.isArray(cardsData?.cards) ? cardsData.cards : [];
+  const cardsPagination = cardsData?.pagination || { page: 1, totalPages: 1, total: 0 };
   const deviceTotal = deviceBreakdown.reduce((sum, row) => sum + row.count, 0);
   const osTotal = osBreakdown.reduce((sum, row) => sum + row.count, 0);
 
@@ -632,50 +706,94 @@ export default function AdminDashboardPage() {
             </div>
 
             <div style={styles.panel}>
-              <h2 style={styles.sectionTitle}>Recent Cards</h2>
-              {loading && !stats ? (
+              <h2 style={styles.sectionTitle}>Cards</h2>
+              {cardsError && (
+                <div style={styles.errorBox}>
+                  <p style={{ margin: 0, fontWeight: 600 }}>Couldn't load cards</p>
+                  <p style={{ margin: '6px 0 0', fontSize: '14px', color: 'rgba(46,31,59,0.7)' }}>
+                    {cardsError}
+                  </p>
+                  <button
+                    type="button"
+                    style={styles.errorBtn}
+                    onClick={() => fetchCards(cardsPage)}
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+              {!cardsError && cardsLoading && !cardsData ? (
                 <>
                   <div style={styles.loadingBar} />
                   <div style={styles.loadingBar} />
                   <div style={{ ...styles.loadingBar, width: '80%' }} />
                 </>
-              ) : recentCards.length === 0 ? (
+              ) : !cardsError && cards.length === 0 ? (
                 <p style={styles.emptyState}>No cards created yet.</p>
-              ) : (
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}></th>
-                      <th style={styles.th}>Recipient</th>
-                      <th style={styles.th}>Occasion</th>
-                      <th style={styles.th}>Created</th>
-                      <th style={styles.th}>Views</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentCards.map((card) => (
-                      <tr key={card.slug}>
-                        <td style={styles.td}>
-                          {card.thumbnailUrl ? (
-                            <img
-                              src={card.thumbnailUrl}
-                              alt=""
-                              style={styles.thumbnail}
-                            />
-                          ) : (
-                            <div style={styles.thumbnailPlaceholder}>🎉</div>
-                          )}
-                        </td>
-                        <td style={styles.td}>{card.recipientName}</td>
-                        <td style={{ ...styles.td, textTransform: 'capitalize' }}>
-                          {card.occasion?.replace('_', ' ')}
-                        </td>
-                        <td style={styles.td}>{formatDateTime(card.createdAt)}</td>
-                        <td style={styles.td}>{(card.viewCount ?? 0).toLocaleString()}</td>
+              ) : !cardsError && (
+                <>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}></th>
+                        <th style={styles.th}>Recipient</th>
+                        <th style={styles.th}>Occasion</th>
+                        <th style={styles.th}>Created</th>
+                        <th style={styles.th}>Views</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {cards.map((card) => (
+                        <tr key={card.slug}>
+                          <td style={styles.td}>
+                            {card.thumbnailUrl ? (
+                              <img
+                                src={card.thumbnailUrl}
+                                alt=""
+                                style={styles.thumbnail}
+                              />
+                            ) : (
+                              <div style={styles.thumbnailPlaceholder}>🎉</div>
+                            )}
+                          </td>
+                          <td style={styles.td}>{card.recipientName}</td>
+                          <td style={{ ...styles.td, textTransform: 'capitalize' }}>
+                            {card.occasion?.replace('_', ' ')}
+                          </td>
+                          <td style={styles.td}>{formatDateTime(card.createdAt)}</td>
+                          <td style={styles.td}>{(card.viewCount ?? 0).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={styles.paginationRow}>
+                    <button
+                      type="button"
+                      style={{
+                        ...styles.pageBtn,
+                        ...(cardsPagination.page <= 1 ? styles.pageBtnDisabled : {}),
+                      }}
+                      onClick={() => setCardsPage((p) => Math.max(1, p - 1))}
+                      disabled={cardsPagination.page <= 1 || cardsLoading}
+                    >
+                      &larr; Prev
+                    </button>
+                    <span style={styles.pageLabel}>
+                      Page {cardsPagination.page} of {cardsPagination.totalPages} ({cardsPagination.total.toLocaleString()} cards)
+                    </span>
+                    <button
+                      type="button"
+                      style={{
+                        ...styles.pageBtn,
+                        ...(cardsPagination.page >= cardsPagination.totalPages ? styles.pageBtnDisabled : {}),
+                      }}
+                      onClick={() => setCardsPage((p) => Math.min(cardsPagination.totalPages, p + 1))}
+                      disabled={cardsPagination.page >= cardsPagination.totalPages || cardsLoading}
+                    >
+                      Next &rarr;
+                    </button>
+                  </div>
+                </>
               )}
             </div>
 

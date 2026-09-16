@@ -164,12 +164,17 @@ function getEventFieldBreakdown(field, { eventType = 'view' } = {}) {
 }
 
 /**
- * Most recently created cards, each with its view count and the device/OS
- * of whoever created it (from that card's 'create' event) -- powers the
- * admin dashboard's "Recent Cards" list.
+ * A page of cards (most recent first), each with its view count and the
+ * device/OS of whoever created it (from that card's 'create' event) --
+ * powers the admin dashboard's "Cards" list. Superseded the old unpaginated
+ * getRecentCards(), which was capped at 100 and couldn't page further.
  */
-function getRecentCards(limit = 20) {
+function getCardsPage({ page = 1, limit = 20 } = {}) {
   const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
+  const offset = (safePage - 1) * safeLimit;
+
+  const total = db.prepare(`SELECT COUNT(*) AS count FROM cards`).get()?.count || 0;
 
   const sql = `
     SELECT
@@ -183,10 +188,10 @@ function getRecentCards(limit = 20) {
       (SELECT os FROM events e WHERE e.event_type = 'create' AND e.card_slug = c.slug ORDER BY e.created_at ASC LIMIT 1) AS creatorOs
     FROM cards c
     ORDER BY c.created_at DESC
-    LIMIT ?
+    LIMIT ? OFFSET ?
   `;
 
-  return db.prepare(sql).all(safeLimit).map((row) => {
+  const cards = db.prepare(sql).all(safeLimit, offset).map((row) => {
     let firstPhoto = null;
     try {
       const parsed = JSON.parse(row.photoPaths || '[]');
@@ -205,6 +210,16 @@ function getRecentCards(limit = 20) {
       creatorOs: row.creatorOs || null,
     };
   });
+
+  return {
+    cards,
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / safeLimit)),
+    },
+  };
 }
 
 /** Site-wide total and unique-device view counts, across every card. */
@@ -231,7 +246,7 @@ module.exports = {
   getCardViewStats,
   getViewStatsBucketed,
   getEventFieldBreakdown,
-  getRecentCards,
+  getCardsPage,
   getOverallViewSummary,
   getTotalCardCount,
 };
