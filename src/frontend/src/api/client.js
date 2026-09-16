@@ -1,92 +1,171 @@
-const API_BASE = '/api';
+import axios from 'axios';
 
-/**
- * Handles a fetch Response, parsing JSON and throwing on error status.
- */
-async function handleResponse(response) {
-  let data = null;
-  try {
-    data = await response.json();
-  } catch (err) {
-    data = null;
-  }
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-  if (!response.ok) {
-    const message = (data && data.error) || (data && data.message) || `Request failed with status ${response.status}`;
-    const error = new Error(message);
-    error.status = response.status;
-    error.data = data;
-    throw error;
-  }
+const client = axios.create({
+  baseURL: API_BASE_URL,
+});
 
-  return data;
+// ---------------------------------------------------------------------------
+// Public card endpoints
+// ---------------------------------------------------------------------------
+
+export async function createCard(formData) {
+  const response = await client.post('/cards', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
 }
 
-/**
- * Fetches app configuration (e.g. available templates, limits) from the backend.
- * GET /api/config
- */
-export async function getConfig() {
-  const response = await fetch(`${API_BASE}/config`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
-
-  return handleResponse(response);
-}
-
-/**
- * Submits a new birthday card creation request.
- * Builds a multipart/form-data payload including recipient name, message,
- * selected template, and any attached photo files.
- *
- * @param {Object} params
- * @param {string} params.recipientName
- * @param {string} params.message
- * @param {string} [params.template] - Selected card template identifier.
- * @param {File[]} [params.photos] - Array of File objects to upload.
- * @returns {Promise<Object>} The created card data (including its shareable id/url).
- */
-export async function createCard({ recipientName, message, template, photos = [] }) {
-  const formData = new FormData();
-  formData.append('recipientName', recipientName);
-  formData.append('message', message);
-
-  if (template) {
-    formData.append('template', template);
-  }
-
-  photos.forEach((photo) => {
-    formData.append('photos', photo);
-  });
-
-  const response = await fetch(`${API_BASE}/cards`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  return handleResponse(response);
-}
-
-/**
- * Fetches a single card by its shareable id.
- * GET /api/cards/:id
- */
 export async function getCard(cardId) {
-  const response = await fetch(`${API_BASE}/cards/${encodeURIComponent(cardId)}`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
-
-  return handleResponse(response);
+  const response = await client.get(`/cards/${encodeURIComponent(cardId)}`);
+  return response.data;
 }
 
-export default {
-  getConfig,
-  createCard,
-  getCard,
-};
+// ---------------------------------------------------------------------------
+// Admin authentication
+//
+// Security note: we never store the admin username/password (or a Basic Auth
+// token derived from them) in any client-accessible storage. Instead, the
+// admin client logs in against a server-side session endpoint. The server
+// validates the credentials once and issues an HttpOnly, Secure session
+// cookie. All subsequent admin requests rely on that cookie (sent
+// automatically by the browser via `withCredentials`) — the frontend never
+// re-sends or persists the password, and JavaScript has no access to the
+// cookie's contents.
+// ---------------------------------------------------------------------------
+
+const ADMIN_SESSION_FLAG_KEY = 'adminSessionActive';
+
+// Simple pub/sub so UI components (e.g. an admin login modal) can react
+// when a session expires or a request comes back unauthorized, without this
+// module needing to know about React state/routing.
+const authListeners = new Set();
+
+export function onAdminAuthRequired(listener) {
+  authListeners.add(listener);
+  return () => authListeners.delete(listener);
+}
+
+function notifyAdminAuthRequired(reason) {
+  clearAdminSessionFlag();
+  authListeners.forEach((listener) => {
+    try {
+      listener(reason);
+    } catch (err) {
+      // Never let a listener error break the auth flow.
+      console.error('admin auth listener error', err);
+    }
+  });
+}
+
+function setAdminSessionFlag() {
+  try {
+    sessionStorage.setItem(ADMIN_SESSION_FLAG_KEY, 'true');
+  } catch {
+    // sessionStorage may be unavailable (e.g. private browsing); non-fatal.
+  }
+}
+
+function clearAdminSessionFlag() {
+  try {
+    sessionStorage.removeItem(ADMIN_SESSION_FLAG_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// Best-effort hint for the UI to decide whether to show a login prompt on
+// mount. The real source of truth is always the server (via the HttpOnly
+// cookie), so this flag is only ever used optimistically.
+export function hasActiveAdminSessionHint() {
+  try {
+    return sessionStorage.getItem(ADMIN_SESSION_FLAG_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Log in as admin. Credentials are sent once, over HTTPS, directly to the
+ * login endpoint and are never persisted client-side. On success the server
+ * sets an HttpOnly session cookie; the browser will attach it automatically
+ * on subsequent admin requests.
+ */
+export async function adminLogin(username, password) {
+  try {
+    const response = await client.post(
+      '/admin/login',
+      { username, password },
+      { withCredentials: true }
+    );
+    setAdminSessionFlag();
+    return response.data;
+  } catch (error) {
+    clearAdminSessionFlag();
+    throw normalizeAdminError(error);
+  }
+}
+
+export async function adminLogout() {
+  try {
+    await client.post('/admin/logout', null, { withCredentials: true });
+  } finally {
+    clearAdminSessionFlag();
+  }
+}
+
+/**
+ * Internal helper for authenticated admin requests. Relies on the HttpOnly
+ * session cookie (withCredentials: true) rather than any header built from
+ * stored credentials. On a 401 response, clears local session hints and
+ * notifies listeners so the UI can prompt the user to re-authenticate.
+ */
+async function adminRequest(config) {
+  try {
+    const response = await client.request({
+      ...config,
+      withCredentials: true,
+    });
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      notifyAdminAuthRequired('session_expired');
+    }
+    throw normalizeAdminError(error);
+  }
+}
+
+function normalizeAdminError(error) {
+  if (error.response) {
+    const message =
+      (error.response.data && error.response.data.message) ||
+      `Request failed with status ${error.response.status}`;
+    const normalized = new Error(message);
+    normalized.status = error.response.status;
+    return normalized;
+  }
+  return error;
+}
+
+// ---------------------------------------------------------------------------
+// Admin stats endpoints
+// ---------------------------------------------------------------------------
+
+export async function fetchAdminOverviewStats() {
+  return adminRequest({ method: 'get', url: '/admin/stats/overview' });
+}
+
+export async function fetchAdminCardStats({ page = 1, pageSize = 20 } = {}) {
+  return adminRequest({
+    method: 'get',
+    url: '/admin/stats/cards',
+    params: { page, pageSize },
+  });
+}
+
+export async function fetchAdminStorageStats() {
+  return adminRequest({ method: 'get', url: '/admin/stats/storage' });
+}
+
+export default client;

@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { rewardedAdClientId, rewardedAdUnitId } from '../config';
 
 const SCRIPT_ID = 'rewarded-ad-sdk-script';
 const AD_LOAD_TIMEOUT_MS = 8000;
@@ -37,7 +36,9 @@ function loadAdScript(clientId) {
   });
 }
 
-export default function RewardedAdModal({ onAdComplete, onCancel }) {
+export default function RewardedAdModal({ adUnitId, adClientId, onComplete, onClose }) {
+  const rewardedAdClientId = adClientId;
+  const rewardedAdUnitId = adUnitId;
   const [status, setStatus] = useState('loading'); // loading | playing | completed | error
   const [statusText, setStatusText] = useState('Loading your ad…');
   const settledRef = useRef(false);
@@ -55,21 +56,21 @@ export default function RewardedAdModal({ onAdComplete, onCancel }) {
       clearAllTimeouts();
       setStatus('completed');
       setStatusText(watchedFully ? 'Thanks for watching! Creating your card…' : 'Creating your card…');
-      if (typeof onAdComplete === 'function') {
-        onAdComplete(Boolean(watchedFully));
+      if (typeof onComplete === 'function') {
+        onComplete(Boolean(watchedFully));
       }
     },
-    [onAdComplete, clearAllTimeouts]
+    [onComplete, clearAllTimeouts]
   );
 
   const handleCancel = useCallback(() => {
     if (settledRef.current) return;
     settledRef.current = true;
     clearAllTimeouts();
-    if (typeof onCancel === 'function') {
-      onCancel();
+    if (typeof onClose === 'function') {
+      onClose();
     }
-  }, [onCancel, clearAllTimeouts]);
+  }, [onClose, clearAllTimeouts]);
 
   useEffect(() => {
     settledRef.current = false;
